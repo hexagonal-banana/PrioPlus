@@ -181,6 +181,10 @@ class DcbTxBuffer : public Object
      */
     uint32_t GetFrontPsn() const;
     /**
+     * \brief Get the previous FrontPsn.
+     */
+    uint32_t GetPrevFrontPsn() const;
+    /**
      * \brief Whether the buffer has gap.
      */
     bool HasGap() const;
@@ -246,6 +250,7 @@ class DcbTxBuffer : public Object
 
     std::deque<DcbTxBufferItem> m_buffer;
     uint32_t m_frontPsn; // PSN of the front item in the buffer. Only increase when acked.
+    uint32_t m_prevFrontPsn; // previous FrontPsn.
     std::priority_queue<uint32_t, std::vector<uint32_t>, std::greater<>>
         m_txQueue;             // PSN of the items to be sent
     std::vector<bool> m_acked; // Whether the packet with the PSN is acked, serve as a bitmap in

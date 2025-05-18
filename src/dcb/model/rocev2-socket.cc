@@ -339,8 +339,8 @@ RoCEv2Socket::ForwardUp(Ptr<Packet> packet,
 
     m_sockState->m_receivedEcn = header.GetEcn() == Ipv4Header::EcnType::ECN_CE;
 
-    // If the packet has ProbePacketTag, it is a probe packet or a probe ack packet of RoCEv2Prioplus
-    // Should be handled by HandleProbePacket
+    // If the packet has ProbePacketTag, it is a probe packet or a probe ack packet of
+    // RoCEv2Prioplus Should be handled by HandleProbePacket
     ProbePacketTag probeTag;
     if (packet->RemovePacketTag(probeTag))
     {
@@ -389,7 +389,7 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
 
     // Record the expected PSN, for both ack and nack
     m_stats->RecordExpectedPsn(roce.GetPSN());
-
+    m_prevFrontPsn = m_txBuffer.GetFrontPsn();
     switch (aeth.GetSyndromeType())
     {
     case AETHeader::SyndromeType::FC_DISABLED: { // normal ACK
@@ -1439,6 +1439,12 @@ uint32_t
 DcbTxBuffer::GetFrontPsn() const
 {
     return m_frontPsn;
+}
+
+uint32_t
+DcbTxBuffer::GetPrevFrontPsn() const
+{
+    return m_prevFrontPsn;
 }
 
 bool

@@ -17,9 +17,8 @@
  * Author: F.Y. Xue <xue.fyang@foxmail.com>
  */
 
-#include "rocev2-timely.h"
-
 #include "rocev2-socket.h"
+#include "rocev2-timely.h"
 
 #include "ns3/global-value.h"
 #include "ns3/seq-ts-header.h"
@@ -113,16 +112,78 @@ RoCEv2Timely::~RoCEv2Timely()
 }
 
 void
-RoCEv2Timely::SetReady()
+RoCEv2CreditSpraying::SetReady()
 {
     NS_LOG_FUNCTION(this);
-    // Reload any config before starting
-    SetRateRatio(m_startRateRatio);
-    m_minRtt = m_sockState->GetBaseRtt();
+    // 首个 RTT 探测
+    StopSendingAndStartProbe(m_sockState->GetBaseOneWayDelay() + m_rttCorrection);
 }
 
 void
-RoCEv2Timely::UpdateStateSend(Ptr<Packet> packet)
+RoCEv2CreditSpraying::StopSendingAndStartProbe(Time delay)
+{
+    // To stop sending, we set the cwnd to 0
+    m_sockState->SetCwnd(0);
+
+    // m_stats->RecordCompleteStats(Stats::PrioplusDelayCompleteStats{Simulator::Now(),
+    //                                                               delay,
+    //                                                               0,
+    //                                                               m_incastAvoidanceRate,
+    //                                                               0,
+    //                                                               0,
+    //                                                               0});
+
+    // Start probe
+    ScheduleProbePacket(delay);
+}
+
+void
+RoCEv2CreditSpraying::SendProbePacket()
+{
+    // Check if a probe is just sent
+    if (m_probeEvent.IsRunning())
+    {
+        return;
+    }
+
+    NS_ASSERT_MSG(!m_sendProbeCb.IsNull(), "SendProbeCb not set!");
+    // Check if the flow is stopped
+    if (CheckStopCondition())
+        return;
+
+    // Send a probe packet
+    bool success = m_sendProbeCb(m_probeSeq);
+    if (success)
+    {
+        m_inflightProbes[m_probeSeq] = Simulator::Now().GetNanoSeconds();
+        m_probeSeq += 1;
+        // Log the time and seq of the probe
+        NS_LOG_DEBUG(Simulator::Now().GetNanoSeconds() << " Send probe " << m_probeSeq - 1);
+    }
+    else
+    {
+        NS_LOG_WARN("Send probe failed!");
+    }
+}
+
+void
+RoCEv2CreditSpraying::ScheduleProbePacket(Time delay)
+{
+    Time qDelay = delay;
+    Time randomDelay = // Time(0);
+        NanoSeconds(m_rngProbeTime->GetValue() * m_probeInterval.GetNanoSeconds());
+    // Cancel previous probe event
+    if (m_probeEvent.IsRunning())
+        m_probeEvent.Cancel();
+    m_probeEvent =
+        Simulator::Schedule(qDelay + randomDelay, &RoCEv2CreditSpraying::SendProbePacket, this);
+    NS_LOG_DEBUG(Simulator::Now().GetPicoSeconds()
+                 << " " << Simulator::GetContext() << " Schedule probe after "
+                 << (qDelay + randomDelay).GetPicoSeconds() << "ps");
+}
+
+void
+RoCEv2CreditSpraying::UpdateStateSend(Ptr<Packet> packet)
 {
     NS_LOG_FUNCTION(this << packet);
 
@@ -134,96 +195,15 @@ RoCEv2Timely::UpdateStateSend(Ptr<Packet> packet)
 }
 
 void
-RoCEv2Timely::UpdateStateWithRcvACK(Ptr<Packet> ack,
-                                    const RoCEv2Header& roce,
-                                    const uint32_t senderNextPSN)
+RoCEv2CreditSpraying::UpdateStateWithRcvACK(Ptr<Packet> ack,
+                                            const RoCEv2Header& roce,
+                                            const uint32_t senderNextPSN)
 {
+    // credit spraying 收到 ACK&Credit 的逻辑
+    // 计算 ACK 的包的个数，SetCwnd更新窗口
     NS_LOG_FUNCTION(this << ack << roce);
-
-    uint32_t ackSeq = roce.GetPSN();
-
-    // Read the ACK's PSN and get the corresponding timeslot.
-    Time newRtt = Simulator::Now() - m_tsMap[roce.GetPSN() - 1];
-    // Record the packet delay for every packet to calculate the orcal gradient
-    m_stats->RecordPacketDelay(m_tsMap[roce.GetPSN() - 1], Simulator::Now(), newRtt);
-
-    if (ackSeq < m_nextUpdateSeq)
-    {
-        return;
-    }
-    if (m_updateFreq == UpdateFreq::PER_RTT)
-    {
-        m_nextUpdateSeq = senderNextPSN;
-    }
-    else if (m_updateFreq == UpdateFreq::PER_SEVERAL_PKTS)
-    {
-        m_nextUpdateSeq += m_perpackets;
-    }
-    else
-    {
-        NS_ASSERT_MSG(false, "Unknown update frequency");
-    }
-
-    if (m_prevRtt < Time(0))
-    {
-        // first ACK, do nothing
-    }
-    else
-    {
-        if (Simulator::Now().GetNanoSeconds() > 100250000)
-        {
-            NS_LOG_DEBUG("newRtt: " << newRtt.GetNanoSeconds()
-                                    << ", m_prevRtt: " << m_prevRtt.GetNanoSeconds());
-        }
-        Time newRttDiff = newRtt - m_prevRtt;
-        // update m_rttDiff
-        m_rttDiff = m_alpha * newRttDiff + (1 - m_alpha) * m_rttDiff;
-        // m_rttDiff divided by m_minRtt to get normalized gradient
-        double gradient = m_rttDiff.GetSeconds() / m_minRtt.GetSeconds();
-
-        m_stats->RecordPacketDelayGradient(m_tsMap[roce.GetPSN() - 1], Simulator::Now(), gradient);
-
-        double curRateRatio = m_sockState->GetRateRatioPercent();
-
-        // if newRtt is less than Tlow, additive increment
-        if (newRtt < m_tLow)
-        {
-            curRateRatio += m_raiRatio;
-        }
-        // if newRtt is greater than Thigh, multiplicative decrement
-        else if (newRtt > m_tHigh)
-        {
-            curRateRatio *= (1.0 - m_mdFactor * (m_tHigh.GetSeconds() / newRtt.GetSeconds()));
-        }
-        else
-        {
-            // if gradient is not positive, AI or HAI
-            if (gradient <= 0)
-            {
-                if (m_haiMode)
-                    m_incStage++;
-                if (m_incStage > m_maxStage)
-                {
-                    curRateRatio += m_maxStage * m_raiRatio;
-                    m_incStage = m_maxStage;
-                }
-                else
-                {
-                    // not HAI mode, or HAI mode but not reach max stage
-                    curRateRatio += m_raiRatio;
-                }
-            }
-            else
-            {
-                m_incStage = 1;
-                curRateRatio *= (1.0 - m_mdFactor * gradient);
-            }
-        }
-        SetRateRatio(curRateRatio);
-        // m_sockState->SetRateRatioPercent(m_curRateRatio);
-    }
-    // update m_prevRtt
-    m_prevRtt = newRtt;
+    uint32_t ackedPkts = std::max((uint32_t)0, roce.GetPSN() - m_sockState->GetPrevFrontPsn());
+    m_sockState->SetCwnd(m_sockState->GetCwnd() + 1 - ackedPkts);
 }
 
 std::string
