@@ -759,6 +759,10 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId)
         Ptr<RoCEv2PrioplusSwift> prioplus = DynamicCast<RoCEv2PrioplusSwift>(algo);
         prioplus->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
         prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
+    }else if (congTypeId == RoCEv2CreditSpraying::GetTypeId())
+    {
+        Ptr<RoCEv2CreditSpraying> creditSpraying = DynamicCast<RoCEv2CreditSpraying>(algo);
+        creditSpraying->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
     }
 }
 
@@ -1027,8 +1031,9 @@ RoCEv2Socket::SendProbePacket(uint32_t psn)
     // Check the m_congTypeId, should be RoCEv2Prioplus
     NS_ASSERT_MSG(
         m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
-            m_congTypeId == RoCEv2PrioplusSwift::GetTypeId(),
-        "Sending probe, but the congestion control type of the socket is not RoCEv2Prioplus.");
+            m_congTypeId == RoCEv2PrioplusSwift::GetTypeId() ||
+                m_congTypeId == RoCEv2CreditSpraying::GetTypeId(),
+        "Sending probe, but the congestion control type of the socket is not RoCEv2Prioplus / RoCEv2CreditSpraying.");
 
     // if (!CheckQueueDiscAvaliable(GetPriority()))
     // {

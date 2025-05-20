@@ -27,12 +27,12 @@
 namespace ns3
 {
 
-NS_LOG_COMPONENT_DEFINE("RoCEv2Timely");
+NS_LOG_COMPONENT_DEFINE("RoCEv2CreditSpraying");
 
-NS_OBJECT_ENSURE_REGISTERED(RoCEv2Timely);
+NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpraying);
 
 TypeId
-RoCEv2Timely::GetTypeId()
+RoCEv2CreditSpraying::GetTypeId()
 {
     static TypeId tid =
         TypeId("ns3::RoCEv2Timely")
@@ -115,71 +115,60 @@ void
 RoCEv2CreditSpraying::SetReady()
 {
     NS_LOG_FUNCTION(this);
-    // 首个 RTT 探测
-    StopSendingAndStartProbe(m_sockState->GetBaseOneWayDelay() + m_rttCorrection);
+    // send credit request and set timer for it
+    SendCreditRequest(m_sockState->GetBaseOneWayDelay() + m_rttCorrection);
 }
 
 void
-RoCEv2CreditSpraying::StopSendingAndStartProbe(Time delay)
+RoCEv2CreditSpraying::SendCreditRequest(Time rto)
 {
     // To stop sending, we set the cwnd to 0
     m_sockState->SetCwnd(0);
 
-    // m_stats->RecordCompleteStats(Stats::PrioplusDelayCompleteStats{Simulator::Now(),
-    //                                                               delay,
-    //                                                               0,
-    //                                                               m_incastAvoidanceRate,
-    //                                                               0,
-    //                                                               0,
-    //                                                               0});
-
-    // Start probe
-    ScheduleProbePacket(delay);
-}
-
-void
-RoCEv2CreditSpraying::SendProbePacket()
-{
-    // Check if a probe is just sent
-    if (m_probeEvent.IsRunning())
+    // Check if a Req is just sent
+    if (m_cReqTimeOut.IsRunning())
     {
         return;
     }
 
-    NS_ASSERT_MSG(!m_sendProbeCb.IsNull(), "SendProbeCb not set!");
+    NS_ASSERT_MSG(!m_sendCreditReqCb.IsNull(), "SendCreditReqCb not set!");
     // Check if the flow is stopped
     if (CheckStopCondition())
         return;
 
-    // Send a probe packet
-    bool success = m_sendProbeCb(m_probeSeq);
+    // Send a CreditReq packet
+    bool success = m_sendCreditReqCb(0);
     if (success)
     {
-        m_inflightProbes[m_probeSeq] = Simulator::Now().GetNanoSeconds();
-        m_probeSeq += 1;
-        // Log the time and seq of the probe
-        NS_LOG_DEBUG(Simulator::Now().GetNanoSeconds() << " Send probe " << m_probeSeq - 1);
+        // m_inflightProbes[m_probeSeq] = Simulator::Now().GetNanoSeconds();
+        // m_probeSeq += 1;
+        // // Log the time and seq of the probe
+        NS_LOG_DEBUG(Simulator::Now().GetNanoSeconds() << " Send Credit Req ");
     }
     else
     {
-        NS_LOG_WARN("Send probe failed!");
+        NS_LOG_WARN("Send Credit Req failed!");
     }
+    // Start probe
+    ScheduleNextCreditReq(rto);
 }
 
 void
-RoCEv2CreditSpraying::ScheduleProbePacket(Time delay)
+RoCEv2CreditSpraying::ScheduleNextCreditReq(Time rto)
 {
-    Time qDelay = delay;
-    Time randomDelay = // Time(0);
-        NanoSeconds(m_rngProbeTime->GetValue() * m_probeInterval.GetNanoSeconds());
     // Cancel previous probe event
-    if (m_probeEvent.IsRunning())
-        m_probeEvent.Cancel();
-    m_probeEvent =
-        Simulator::Schedule(qDelay + randomDelay, &RoCEv2CreditSpraying::SendProbePacket, this);
+    if (m_cReqTimeOut.IsRunning())
+        m_cReqTimeOut.Cancel();
+    m_cReqTimeOut = Simulator::Schedule(rto, &RoCEv2CreditSpraying::SendCreditRequest, this);
     NS_LOG_DEBUG(Simulator::Now().GetPicoSeconds()
                  << " " << Simulator::GetContext() << " Schedule probe after "
-                 << (qDelay + randomDelay).GetPicoSeconds() << "ps");
+                 << rto.GetPicoSeconds() << "ps");
+}
+
+void
+RoCEv2CreditSpraying::SetSendCreditReqCb(Callback<bool, uint32_t> sendCreditReqCb)
+{
+    m_sendCreditReqCb = sendCreditReqCb;
 }
 
 void

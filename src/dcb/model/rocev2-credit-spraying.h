@@ -140,6 +140,25 @@ class RoCEv2Timely : public RoCEv2CongestionOps
 
     UpdateFreq m_updateFreq; //!< Update frequency.
 
+    /**
+     * \brief Sender sends out CREDIT_REQUEST to request the receiver to send back the Credits.
+     * This function will be called when:
+     * 1. In CREDIT_STOP / CSTOP_SENT state & appears new data to send.
+     * 2. In CREQ_SENT & CREQ_TimeOut
+     * \param rto: the RTO of the CREQ_TimeOut.
+     */
+    void SendCreditRequest(Time rto);
+
+    /**
+     * \brief Schedule a CREDIT_REQUEST packet.
+     *
+     * \param rto: the RTO of the CREQ_TimeOut.
+     */
+    void ScheduleNextCreditReq(Time rto);
+
+    EventId m_cReqTimeOut; //!< The event to send credit request again
+
+    Callback<bool, uint32_t> m_sendCreditReqCb; // The callback to send credit request
 }; // class RoCEv2Timely
 
 } // namespace ns3
