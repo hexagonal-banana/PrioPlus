@@ -312,7 +312,7 @@ SetGroupAttributes(const boost::json::object& gConf,
     // Iterate over the attributes in the group
     for (auto kvPair : gConf)
     {
-        std::string name = kvPair.key();
+        std::string name(kvPair.key());
         if (name == "groupSize" || name == "applicationNumber")
         {
             continue;

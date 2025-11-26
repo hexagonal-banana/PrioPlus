@@ -59,11 +59,11 @@ SetDefault(boost::json::object& defaultObj)
     {
         // kvPair is the first level pair
         // kvPair contains {Class: {Attribute: Value}}
-        std::string className = kvPair.key();
+        std::string className(kvPair.key());
         boost::json::object subObj = kvPair.value().get_object();
         for (auto subKvPair : subObj)
         {
-            std::string attributeName = subKvPair.key();
+            std::string attributeName(subKvPair.key());
             boost::json::value value = subKvPair.value();
             switch (value.kind())
             {
@@ -101,7 +101,7 @@ SetGlobal(boost::json::object& globalObj)
     for (auto kvPair : globalObj)
     {
         // kvPair are {Name: Value}
-        std::string name = kvPair.key();
+        std::string name(kvPair.key());
         boost::json::value value = kvPair.value();
         switch (value.kind())
         {

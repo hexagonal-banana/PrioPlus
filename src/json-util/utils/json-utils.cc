@@ -264,7 +264,7 @@ ConstructConfigVector(const boost::json::object& configObj)
     // Each value is .Copy() to get Ptr<AttributeValue> as it is forbidden to construct directly
     for (auto kvPair : configObj)
     {
-        std::string name = kvPair.key();
+        std::string name(kvPair.key());
         boost::json::value value = kvPair.value();
         switch (value.kind())
         {

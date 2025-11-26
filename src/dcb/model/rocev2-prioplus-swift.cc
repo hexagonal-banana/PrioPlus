@@ -897,7 +897,7 @@ RoCEv2PrioplusSwift::SetPriorityConfig()
     std::vector<std::pair<double, double>> linearStartRatioArray;
     for (auto& [key, value] : configJsonObj["LinearStartRateRatio"].as_object())
     {
-        linearStartRatioArray.push_back(std::make_pair(std::stod(key), value.as_double()));
+        linearStartRatioArray.push_back(std::make_pair(std::stod(std::string(key)), value.as_double()));
     }
     // Set the linear start ratio accoding priority ratio
     for (auto& [linearStartRatio, priorityRatio] : linearStartRatioArray)
