@@ -26,7 +26,9 @@
 #include "ns3/queue-disc.h"
 #include "ns3/queue-item.h"
 #include "ns3/type-id.h"
+#include "leaky-bucket.h"
 
+class LeakyBucket;
 namespace ns3
 {
 
@@ -197,6 +199,9 @@ class PausableQueueDisc : public QueueDisc
     /***** Members for WDRR *****/
     std::map<uint32_t, std::vector<uint32_t>>
         m_priorityToInnerQueue; //<! Map from priority to inner queue index
+    std::map<uint32_t, LeakyBucket>
+        m_priorityToLeakyBucket; //<! Map from priority to leaky bucket for rate limiting
+    
 }; // class PausableQueueDisc
 
 } // namespace ns3

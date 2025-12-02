@@ -39,6 +39,7 @@ build_lib(
 	  model/rocev2-d2tcp.cc
 	  model/rocev2-nocc.cc
 	  model/switch-node.cc
+	  model/leaky-bucket.cc
 	  utils/hpcc-header.cc
 	  utils/poseidon-header.cc
 	  utils/pfc-frame.cc
@@ -82,6 +83,7 @@ build_lib(
 	  model/rocev2-d2tcp.h
 	  model/rocev2-nocc.h
 	  model/switch-node.h
+	  model/leaky-bucket.h
 	  utils/hpcc-header.h
 	  utils/poseidon-header.h
 	  utils/pfc-frame.h

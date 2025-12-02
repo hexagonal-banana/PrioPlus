@@ -301,6 +301,24 @@ PausableQueueDisc::DoDequeue()
     for (auto it = m_priorityToInnerQueue.rbegin(); it != m_priorityToInnerQueue.rend(); ++it)
     {
         // std::cout << "Try priority: " << it->first << std::endl;
+
+        //find the minimum packet size among all queues in this priority
+        // if the minimum packet size is larger than the available tokens in the leaky bucket,
+        // we skip this priority
+        uint32_t consume_size=INT32_MAX;
+        uint32_t prio=it->first;
+        for(uint32_t i=0;i<m_priorityToInnerQueue[prio].size();i++){
+            uint32_t innerQueueIndex = m_priorityToInnerQueue[prio][i];
+            Ptr<PausableQueueDiscClass> qdclass = GetQueueDiscClass(innerQueueIndex);
+            if((!m_fcEnabled || !qdclass->IsPaused())&& qdclass->GetQueueDisc()->GetNBytes()>0){
+                consume_size=std::min(consume_size,qdclass->GetQueueDisc()->Peek()->GetPacket()->GetSize());
+            }
+        }
+        if(m_priorityToLeakyBucket[prio].CanConsume(consume_size)==false){
+        //This prio is rate limited now, skip it
+            continue;
+        }
+
         for (uint32_t j = 0; j < it->second.size(); j++)
         {
             uint32_t innerQueueIndex = it->second[j];
@@ -374,6 +392,9 @@ PausableQueueDisc::DoDequeue()
             }
 
             qdclass->DecrementCredit(item->GetPacket()->GetSize());
+
+            NS_ASSERT(m_priorityToLeakyBucket.find(selectedPriority) != m_priorityToLeakyBucket.end());
+            m_priorityToLeakyBucket[selectedPriority].Consume(item->GetPacket()->GetSize());
             if (!m_tcEgress.IsNull())
                 m_tcEgress(m_portIndex, selectedPriority, item->GetPacket());
             return item;
@@ -491,6 +512,7 @@ PausableQueueDisc::SetWdrrParameters(std::vector<uint32_t> priorities,
     // Constuct the m_priorityToInnerQueue
     for (uint32_t i = 0; i < priorities.size(); i++)
     {
+        m_priorityToLeakyBucket[priorities[i]] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
         m_priorityToInnerQueue[priorities[i]].push_back(i);
         Ptr<PausableQueueDiscClass> qdclass = GetQueueDiscClass(i);
         qdclass->SetWdrrParameters(quantum[i] * 1000, maxCredit * 1000);
@@ -520,6 +542,8 @@ PausableQueueDisc::SetDefaultStrictPriority()
     for (uint32_t i = 0; i < GetNQueueDiscClasses(); i++)
     {
         m_priorityToInnerQueue[i].push_back(i);
+        // Add a leaky bucket for each priority
+        m_priorityToLeakyBucket[i] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
     }
 }
 

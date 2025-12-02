@@ -156,9 +156,9 @@ main(int argc, char* argv[])
     //         port.GetFC()->TraceConnectWithoutContext("PfcReceived", MakeCallback(&PfcReceived));
     //     }
     // }
-
+    // Simulator::ScheduleDestroy();
     Simulator::Run();
-
+    std::cout<< "time: " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
     json_util::OutputStats(configObj, apps, topology, config_file);
 
     tEnd = std::chrono::system_clock::now();

@@ -100,7 +100,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
-                "config/demos/cc-tree4/cc-swift.json"
+                "config/demos/leaky-bucket.json"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -118,9 +118,36 @@
                     "description": "Enable pretty-printing for gdb",
                     "text": "-enable-pretty-printing",
                     "ignoreFailures": true
-                },
+                }
+            ]
+        },
+        {
+            "name": "(gdb) Launch rdma-simulator with config selection",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
+            "args": [
+                "${input:configFile}"
             ],
-        }
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/build/lib/"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
+        },
     ],
     "inputs": [
         {
@@ -135,6 +162,18 @@
                 "minsizerel"
             ],
             "default": "default"
+        },
+        {
+            "type": "pickString",
+            "id": "configFile",
+            "description": "Select configuration file",
+            "options": [
+                "config/demos/cc-tree4/cc-dcqcn.json",
+                "config/demos/cc-tree4/cc-swift.json",
+                "config/demos/cc-tree4/cc-ledbat.json",
+                "config/demos/cc-tree4/cc-harvest.json"
+            ],
+            "default": "config/demos/cc-tree4/cc-dcqcn.json"
         }
     ]
 }

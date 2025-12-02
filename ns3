@@ -322,7 +322,7 @@ def parse_args(argv):
                                dest='verbose',
                                default_value=False)
 
-    # Try to split -- separated arguments into two lists for ns3 and for the runnable target
+# Try to split -- separated arguments into two lists for ns3 and for the runnable target
     try:
         args_separator_index = argv.index('--')
         ns3_args = argv[:args_separator_index]
@@ -652,6 +652,9 @@ def configure_cmake(cmake, args, current_cmake_cache_folder, current_cmake_gener
                 )
             cmake_args.append("-DNS3_NATIVE_OPTIMIZATIONS=%s" % on_off((args.build_profile == "optimized")))
 
+    # Add compile commands database for IDE support
+    cmake_args.append("-DCMAKE_EXPORT_COMPILE_COMMANDS=ON")
+
     options = (("ASSERT", "asserts"),
                ("CLANG_TIDY", "clang_tidy"),
                ("COVERAGE", "gcov"),
@@ -920,8 +923,6 @@ def cmake_build(current_cmake_cache_folder, output, jobs, target=None, dry_run=F
         # In case of failure, exit prematurely with the return code from the build
         if ret.returncode != 0:
             exit(ret.returncode)
-
-
 def extract_cmakecache_settings(current_cmake_cache_folder):
     try:
         with open(current_cmake_cache_folder + os.sep + "CMakeCache.txt", "r", encoding="utf-8") as f:
