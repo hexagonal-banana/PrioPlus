@@ -17,8 +17,8 @@
  * Author: F.Y. Xue <xue.fyang@foxmail.com>
  */
 
-#ifndef ROCEV2_TIMELY_H
-#define ROCEV2_TIMELY_H
+#ifndef ROCEV2_CREDIT_SPRAYING_H
+#define ROCEV2_CREDIT_SPRAYING_H
 
 #include "rocev2-congestion-ops.h"
 
@@ -32,12 +32,7 @@ namespace ns3
 
 class RoCEv2SocketState;
 
-/**
- * The Timely implementation according to paper:
- *   Radhika Mittal, et al. "TIMELY: RTT-based Congestion Control for the Datacenter." ACM SIGCOMM.
- *   \url https://dl.acm.org/doi/10.1145/2785956.2787510
- */
-class RoCEv2Timely : public RoCEv2CongestionOps
+class RoCEv2CreditSpraying : public RoCEv2CongestionOps
 {
   public:
     /**
@@ -47,15 +42,15 @@ class RoCEv2Timely : public RoCEv2CongestionOps
      */
     static TypeId GetTypeId();
 
-    RoCEv2Timely();
-    RoCEv2Timely(Ptr<RoCEv2SocketState> sockState);
-    ~RoCEv2Timely() override;
+    RoCEv2CreditSpraying();
+    RoCEv2CreditSpraying(Ptr<RoCEv2SocketState> sockState);
+    ~RoCEv2CreditSpraying() override;
 
     // void SetRateAIRatio(double ratio);
     // void SetRateHyperAIRatio(double ratio);
 
     /**
-     * After configuring the Timely, call this function.
+     * After configuring the CC, call this function.
      */
     void SetReady() override;
 
@@ -65,7 +60,7 @@ class RoCEv2Timely : public RoCEv2CongestionOps
     void UpdateStateSend(Ptr<Packet> packet) override;
 
     /**
-     * When the sender receiving an ACK, do what Timely does.
+     * When the sender receiving an ACK.
      */
     void UpdateStateWithRcvACK(Ptr<Packet> ack,
                                const RoCEv2Header& roce,
@@ -81,16 +76,6 @@ class RoCEv2Timely : public RoCEv2CongestionOps
 
         // Detailed statistics, only enabled if needed
         bool bDetailedSenderStats;
-        std::vector<std::tuple<Time, Time, Time>>
-            vPacketDelay; //!< The Delay masurement per packet, recorded as send time, recv time and
-                          //!< delay
-        std::vector<std::tuple<Time, Time, double>>
-            vPacketDelayGradient; //!< The Delay Gradient masurement per packet, recorded as send time,
-                                  //!< recv time and delay gradient
-
-        // Recorder function of the detailed statistics
-        void RecordPacketDelay(Time sendTs, Time recvTs, Time delay); 
-        void RecordPacketDelayGradient(Time sendTs, Time recvTs, double gradient);
 
         // Collect the statistics and check if the statistics is correct
         void CollectAndCheck();
@@ -103,6 +88,11 @@ class RoCEv2Timely : public RoCEv2CongestionOps
         return m_stats;
     }
 
+    /**
+     * \brief Set the callback to send CREDIT_REQUEST packet.
+     */
+    void SetSendCreditReqCb(Callback<bool, uint32_t> sendCreditReqCb);
+
   private:
     /**
      * Initialize the state.
@@ -110,41 +100,9 @@ class RoCEv2Timely : public RoCEv2CongestionOps
     void Init();
 
     std::shared_ptr<Stats> m_stats; //!< Statistics
-    
-    double m_alpha;    //!< α in paper. EWMA weight parameter
-    double m_mdFactor; //!< β in paper. Multiplicative Decrement factor
-
-    double m_raiRatio; //!< RateAI / link rate for additive increase
-
-    uint32_t m_incStage; //!< To count how many times that gradient<0
-
-    bool m_haiMode;      //!< whether in hyperactive-increase mode
-    uint32_t m_maxStage; //!< N in paper. Default to 5.
-
-    Time m_prevRtt; //!< prev_rtt in paper.
-    Time m_rttDiff; //!< rtt_diff in paper.
-
-    Time m_minRtt;                    //!< minRTT in paper.
-    Time m_tLow;                      //!< Tlow in paper.
-    Time m_tHigh;                     //!< Thigh in paper.
-    std::map<uint32_t, Time> m_tsMap; //!< To store timeslot of each PSN.
-
-    uint32_t m_nextUpdateSeq; //!< nextUpdateSeq for controlling updating frequency.
-    uint32_t m_perpackets; //!< Update frequency.
-
-    enum UpdateFreq
-    {
-        PER_RTT,
-        PER_SEVERAL_PKTS
-    }; //!< Update
-
-    UpdateFreq m_updateFreq; //!< Update frequency.
 
     /**
      * \brief Sender sends out CREDIT_REQUEST to request the receiver to send back the Credits.
-     * This function will be called when:
-     * 1. In CREDIT_STOP / CSTOP_SENT state & appears new data to send.
-     * 2. In CREQ_SENT & CREQ_TimeOut
      * \param rto: the RTO of the CREQ_TimeOut.
      */
     void SendCreditRequest(Time rto);
@@ -159,8 +117,8 @@ class RoCEv2Timely : public RoCEv2CongestionOps
     EventId m_cReqTimeOut; //!< The event to send credit request again
 
     Callback<bool, uint32_t> m_sendCreditReqCb; // The callback to send credit request
-}; // class RoCEv2Timely
+}; // class RoCEv2CreditSpraying
 
 } // namespace ns3
 
-#endif // TIMELY_H
+#endif // CREDIT_SPRAYING_H

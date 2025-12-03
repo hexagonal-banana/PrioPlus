@@ -26,6 +26,7 @@ build_lib(
 	  model/rocev2-l4-protocol.cc
 	  model/rocev2-socket.cc
 	  model/rocev2-congestion-ops.cc
+	  model/rocev2-credit-spraying.cc
 	  model/rocev2-dcqcn.cc
 	  model/rocev2-dctcp.cc
 	  model/rocev2-hpcc.cc
@@ -69,6 +70,7 @@ build_lib(
 	  model/rocev2-l4-protocol.h
 	  model/rocev2-socket.h
 	  model/rocev2-congestion-ops.h
+	  model/rocev2-credit-spraying.h
 	  model/rocev2-dcqcn.h
 	  model/rocev2-dctcp.h
 	  model/rocev2-hpcc.h

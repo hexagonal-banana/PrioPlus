@@ -389,7 +389,6 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
 
     // Record the expected PSN, for both ack and nack
     m_stats->RecordExpectedPsn(roce.GetPSN());
-    m_prevFrontPsn = m_txBuffer.GetFrontPsn();
     switch (aeth.GetSyndromeType())
     {
     case AETHeader::SyndromeType::FC_DISABLED: { // normal ACK
@@ -759,10 +758,11 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId)
         Ptr<RoCEv2PrioplusSwift> prioplus = DynamicCast<RoCEv2PrioplusSwift>(algo);
         prioplus->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
         prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
-    }else if (congTypeId == RoCEv2CreditSpraying::GetTypeId())
+    }
+    else if (congTypeId == RoCEv2CreditSpraying::GetTypeId())
     {
         Ptr<RoCEv2CreditSpraying> creditSpraying = DynamicCast<RoCEv2CreditSpraying>(algo);
-        creditSpraying->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
+        creditSpraying->SetSendCreditReqCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
     }
 }
 
@@ -1029,11 +1029,11 @@ bool
 RoCEv2Socket::SendProbePacket(uint32_t psn)
 {
     // Check the m_congTypeId, should be RoCEv2Prioplus
-    NS_ASSERT_MSG(
-        m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
-            m_congTypeId == RoCEv2PrioplusSwift::GetTypeId() ||
-                m_congTypeId == RoCEv2CreditSpraying::GetTypeId(),
-        "Sending probe, but the congestion control type of the socket is not RoCEv2Prioplus / RoCEv2CreditSpraying.");
+    NS_ASSERT_MSG(m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
+                      m_congTypeId == RoCEv2PrioplusSwift::GetTypeId() ||
+                      m_congTypeId == RoCEv2CreditSpraying::GetTypeId(),
+                  "Sending probe, but the congestion control type of the socket is not "
+                  "RoCEv2Prioplus / RoCEv2CreditSpraying.");
 
     // if (!CheckQueueDiscAvaliable(GetPriority()))
     // {
@@ -1444,12 +1444,6 @@ uint32_t
 DcbTxBuffer::GetFrontPsn() const
 {
     return m_frontPsn;
-}
-
-uint32_t
-DcbTxBuffer::GetPrevFrontPsn() const
-{
-    return m_prevFrontPsn;
 }
 
 bool
