@@ -30,6 +30,53 @@ NS_LOG_COMPONENT_DEFINE("RoCEv2Nocc");
 
 NS_OBJECT_ENSURE_REGISTERED(RoCEv2Nocc);
 
+TypeId
+RoCEv2Nocc::GetTypeId(void)
+{
+    static TypeId tid = TypeId("ns3::RoCEv2Nocc")
+                            .SetParent<RoCEv2CongestionOps>()
+                            .AddConstructor<RoCEv2Nocc>()
+                            .SetGroupName("Dcb")
+                            .AddAttribute("FairShare",
+                                          "Set the rate to the fair share",
+                                          BooleanValue(false),
+                                          MakeBooleanAccessor(&RoCEv2Nocc::m_fairShare),
+                                          MakeBooleanChecker())
+                            .AddAttribute("TargetInflight",
+                                          "Set the target inflight",
+                                          DoubleValue(1.0),
+                                          MakeDoubleAccessor(&RoCEv2Nocc::m_targetInflight),
+                                          MakeDoubleChecker<double>());
+    return tid;
+}
+
+RoCEv2Nocc::RoCEv2Nocc()
+    : RoCEv2CongestionOps(std::make_shared<Stats>()),
+      m_stats(std::dynamic_pointer_cast<Stats>(RoCEv2CongestionOps::m_stats))
+{
+    Init();
+}
+
+RoCEv2Nocc::RoCEv2Nocc(Ptr<RoCEv2SocketState> sockState)
+    : RoCEv2CongestionOps(sockState, std::make_shared<Stats>()),
+      m_stats(std::dynamic_pointer_cast<Stats>(RoCEv2CongestionOps::m_stats))
+{
+    Init();
+}
+
+std::string
+RoCEv2Nocc::GetName() const
+{
+    return "NoCC";
+}
+
+void
+RoCEv2Nocc::Init()
+{
+    m_fairShare = false;
+    RegisterCongestionType(GetTypeId());
+}
+
 void
 RoCEv2Nocc::SetReady()
 {

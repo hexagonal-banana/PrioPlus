@@ -18,6 +18,9 @@ class LeakyBucket : public Object
 
     virtual ~LeakyBucket();
 
+    void Pause();
+    void Resume();
+    bool isFull();
 
     void Consume(uint32_t bytes);
     bool CanConsume(uint32_t bytes);

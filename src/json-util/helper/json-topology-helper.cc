@@ -116,10 +116,29 @@ ConstructFcHelper(const boost::json::object& fcConfig)
     JsonCallIfExistsString(fcConfig, "quantumVec", [fcHelper](std::string quantumVec) {
         fcHelper->SetQuantum(ConvertRangeToVector(quantumVec.c_str(), fcHelper->GetNumQueuePerPort()));
     });
+    
     JsonCallIfExistsInt<uint32_t>(
         fcConfig,
         "maxCredit",
         [fcHelper](uint32_t maxCredit) { fcHelper->SetMaxCredit(maxCredit); });
+
+    // Parse and set priority rate limits if they exist
+    JsonCallIfExistsArray(fcConfig, "prioRateLimits", [fcHelper](const boost::json::array& rateLimitsArray) {
+        std::vector<std::tuple<uint32_t, std::string, uint32_t>> rateLimits;
+        for (const auto& rateLimitObj : rateLimitsArray)
+        {
+            if (!rateLimitObj.is_object())
+            {
+                NS_FATAL_ERROR("prioRateLimits array element must be an object");
+            }
+            const auto& obj = rateLimitObj.get_object();
+            uint32_t priority = JsonGetInt64OrRaise(obj, "priority", "priority is required in prioRateLimits");
+            std::string rate = JsonGetStringOrRaise(obj, "rate", "rate is required in prioRateLimits");
+            uint32_t burstSize = JsonGetInt64OrRaise(obj, "burstSize", "burstSize is required in prioRateLimits");
+            rateLimits.emplace_back(priority, rate, burstSize);
+        }
+        fcHelper->SetPrioRateLimit(rateLimits);
+    });
 
     return fcHelper;
 }

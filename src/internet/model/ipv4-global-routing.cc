@@ -41,6 +41,7 @@
 #include "udp-header.h"
 
 #include "ns3/uinteger.h"
+#include "ns3/rocev2-credit-spary.h"
 
 namespace ns3
 {
@@ -57,10 +58,10 @@ Ipv4GlobalRouting::GetTypeId()
             .SetParent<Object>()
             .SetGroupName("Internet")
             .AddAttribute("RandomEcmpRouting",
-                          "Set according to EcmpMode (NONE, PER_PACKET_ECMP, PER_FLOW_ECMP)",
+                          "Set according to EcmpMode (NONE, PER_PACKET_ECMP, PER_FLOW_ECMP, PER_PACKET_SYMMETRIC_ECMP) ",
                           UintegerValue(0),
                           MakeUintegerAccessor(&Ipv4GlobalRouting::m_randomEcmpRouting),
-                          MakeUintegerChecker<uint32_t>(0, 2))
+                          MakeUintegerChecker<uint32_t>(0, 3))
             .AddAttribute("RespondToInterfaceEvents",
                           "Set to true if you want to dynamically recompute the global routes upon "
                           "Interface notification events (up/down, or add/remove address)",
@@ -239,6 +240,38 @@ Ipv4GlobalRouting::LookupGlobal(Ipv4Header header, Ptr<const Packet> p, Ptr<NetD
                 selectIndex = 0;
             }
             break;
+        // case PER_PACKET_SYMMETRIC_ECMP:{
+        //     if(oif==nullptr){
+        //         selectIndex = m_rand->GetInteger(0, allRoutes.size() - 1);
+        //     }//for init topo build
+        //     else{
+        //     Ptr<Packet> p_modify_tag=ConstCast<Packet>(p);
+        //     PathTag tag;
+        //     if (p_modify_tag->PeekPacketTag(tag)) {
+        //         if (tag.forward) {
+        //             uint32_t interfaceIndex=oif->GetIfIndex();
+        //             selectIndex=m_rand->GetInteger(0, allRoutes.size() - 1);
+        //             tag.AppendInterfaceIndex(interfaceIndex);
+        //             p_modify_tag->ReplacePacketTag(tag);
+        //     }
+        //     else{
+        //         uint32_t interfaceIndex=tag.PopInterfaceIndex();
+        //         p_modify_tag->ReplacePacketTag(tag);
+        //         for (uint32_t i=0;i<allRoutes.size();i++){
+        //             if (allRoutes[i]->GetInterface()==interfaceIndex){
+        //                 selectIndex=i;
+        //                 break;
+        //             }
+        //         }
+        //     }
+        //     }
+        //     else{
+        //         selectIndex = m_rand->GetInteger(0, allRoutes.size() - 1);
+        //         tag.forward=true;
+        //         tag.AppendInterfaceIndex(oif->GetIfIndex());
+        //         p_modify_tag->AddPacketTag(tag);
+        //     }}
+        // }break;
         }
         }
 
@@ -659,4 +692,74 @@ Ipv4GlobalRouting::UdpEcmp(const Ipv4Header& header,
     return Hash32(buf._b, HASH_BUF_SIZE) % totalRoutes;
 }
 
+PathTag::PathTag()
+{
+}
+
+PathTag::~PathTag()
+{
+}
+
+TypeId
+PathTag::GetTypeId(){
+    static TypeId tid = TypeId("ns3::PathTag")
+                          .SetParent<Tag>()
+                          .SetGroupName("Dcb")
+                          .AddConstructor<PathTag>();
+    return tid;
+}
+
+TypeId
+PathTag::GetInstanceTypeId() const{
+    return PathTag::GetTypeId();
+}
+
+uint32_t
+PathTag::GetSerializedSize() const{
+    return m_path_device_interface_indexes.size() * sizeof(uint32_t)+sizeof(uint32_t)+sizeof(uint8_t);
+}
+
+void
+PathTag::Serialize(TagBuffer i) const{
+    i.WriteU8(static_cast<uint8_t>(forward));
+    i.WriteU32(m_path_length);
+    for (auto index : m_path_device_interface_indexes)
+    {
+        i.WriteU32(index);
+    }
+}
+
+void
+PathTag::Deserialize(TagBuffer i){
+    m_path_device_interface_indexes.clear();
+    forward = i.ReadU8() != 0;
+    m_path_length = i.ReadU32();
+    for (uint32_t j = 0; j < m_path_length; j++)
+    {
+        m_path_device_interface_indexes.push_back(i.ReadU32());
+    }
+}
+
+void
+PathTag::Print(std::ostream& os) const{
+    os << "PathTag: ";
+    for (auto index : m_path_device_interface_indexes)
+    {
+        os << index << " ";
+    }
+}
+
+void
+PathTag::AppendInterfaceIndex(uint32_t index){
+    m_path_device_interface_indexes.push_back(index);
+    m_path_length= m_path_device_interface_indexes.size();
+}
+
+uint32_t PathTag::PopInterfaceIndex(){
+    NS_ASSERT(!m_path_device_interface_indexes.empty());
+    uint32_t index = m_path_device_interface_indexes.back();
+    m_path_device_interface_indexes.pop_back();
+    m_path_length= m_path_device_interface_indexes.size();
+    return index;
+}
 } // namespace ns3

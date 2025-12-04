@@ -244,7 +244,7 @@ PausableQueueDisc::DoEnqueue(Ptr<QueueDiscItem> item)
         priority = RoCEv2Socket::IpTos2Priority(ipv4Qdi->GetHeader().GetTos());
     }
     NS_ASSERT_MSG(priority < DcbTrafficControl::PRIORITY_NUMBER,
-                  "Priority should be 0~" << DcbTrafficControl::PRIORITY_NUMBER - 1
+"Priority should be 0~" << DcbTrafficControl::PRIORITY_NUMBER - 1
                                           << " but here we have " << priority);
 
     Ptr<PausableQueueDiscClass> qdiscClass = GetQueueDiscClass(priority);
@@ -300,8 +300,6 @@ PausableQueueDisc::DoDequeue()
     // for (uint32_t i = m_priorityToInnerQueue.size() - 1; i-- > 0;)
     for (auto it = m_priorityToInnerQueue.rbegin(); it != m_priorityToInnerQueue.rend(); ++it)
     {
-        // std::cout << "Try priority: " << it->first << std::endl;
-
         //find the minimum packet size among all queues in this priority
         // if the minimum packet size is larger than the available tokens in the leaky bucket,
         // we skip this priority
@@ -310,13 +308,21 @@ PausableQueueDisc::DoDequeue()
         for(uint32_t i=0;i<m_priorityToInnerQueue[prio].size();i++){
             uint32_t innerQueueIndex = m_priorityToInnerQueue[prio][i];
             Ptr<PausableQueueDiscClass> qdclass = GetQueueDiscClass(innerQueueIndex);
-            if((!m_fcEnabled || !qdclass->IsPaused())&& qdclass->GetQueueDisc()->GetNBytes()>0){
-                consume_size=std::min(consume_size,qdclass->GetQueueDisc()->Peek()->GetPacket()->GetSize());
-            }
+            if((!m_fcEnabled || !qdclass->IsPaused())){
+                if (qdclass->GetQueueDisc()->GetNBytes()>0){
+                    consume_size=std::min(consume_size,qdclass->GetQueueDisc()->Peek()->GetPacket()->GetSize());
+                }
         }
-        if(m_priorityToLeakyBucket[prio].CanConsume(consume_size)==false){
-        //This prio is rate limited now, skip it
-            continue;
+        }
+
+        // 检查该优先级是否有leaky bucket
+        auto leakyBucketIt = m_priorityToLeakyBucket.find(prio);
+        if(leakyBucketIt != m_priorityToLeakyBucket.end()){
+                NS_ASSERT(leakyBucketIt->second != nullptr);
+            if(leakyBucketIt->second->CanConsume(consume_size)==false){
+            //This prio is rate limited now, skip it
+                continue;
+            }
         }
 
         for (uint32_t j = 0; j < it->second.size(); j++)
@@ -393,9 +399,14 @@ PausableQueueDisc::DoDequeue()
 
             qdclass->DecrementCredit(item->GetPacket()->GetSize());
 
-            NS_ASSERT(m_priorityToLeakyBucket.find(selectedPriority) != m_priorityToLeakyBucket.end());
-            m_priorityToLeakyBucket[selectedPriority].Consume(item->GetPacket()->GetSize());
-            if (!m_tcEgress.IsNull())
+
+            auto leakyBucketIt = m_priorityToLeakyBucket.find(selectedPriority);            
+            if(leakyBucketIt != m_priorityToLeakyBucket.end()){
+                NS_ASSERT(leakyBucketIt->second != nullptr);
+                leakyBucketIt->second->Consume(item->GetPacket()->GetSize());
+            }
+
+            if(!m_tcEgress.IsNull())
                 m_tcEgress(m_portIndex, selectedPriority, item->GetPacket());
             return item;
         }
@@ -512,27 +523,12 @@ PausableQueueDisc::SetWdrrParameters(std::vector<uint32_t> priorities,
     // Constuct the m_priorityToInnerQueue
     for (uint32_t i = 0; i < priorities.size(); i++)
     {
-        m_priorityToLeakyBucket[priorities[i]] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
+        // 去掉硬编码的leaky bucket创建逻辑
+        // m_priorityToLeakyBucket[priorities[i]] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
         m_priorityToInnerQueue[priorities[i]].push_back(i);
         Ptr<PausableQueueDiscClass> qdclass = GetQueueDiscClass(i);
         qdclass->SetWdrrParameters(quantum[i] * 1000, maxCredit * 1000);
     }
-
-    // cout the priorities and quantum
-    // for (uint32_t i = 0; i < GetNQueueDiscClasses(); i++)
-    // {
-    //     std::cout << "Priority: " << priorities[i] << ", Quantum: " << quantum[i] << std::endl;
-    // }
-    // cout the m_priorityToInnerQueue
-    // for (auto it = m_priorityToInnerQueue.begin(); it != m_priorityToInnerQueue.end(); ++it)
-    // {
-    //     std::cout << "Priority: " << it->first << ", Inner queues: ";
-    //     for (uint32_t i = 0; i < it->second.size(); i++)
-    //     {
-    //         std::cout << it->second[i] << " ";
-    //     }
-    //     std::cout << std::endl;
-    // }
 }
 
 void
@@ -542,9 +538,34 @@ PausableQueueDisc::SetDefaultStrictPriority()
     for (uint32_t i = 0; i < GetNQueueDiscClasses(); i++)
     {
         m_priorityToInnerQueue[i].push_back(i);
-        // Add a leaky bucket for each priority
-        m_priorityToLeakyBucket[i] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
+        // 去掉硬编码的leaky bucket创建逻辑
+        // m_priorityToLeakyBucket[i] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
     }
+}
+
+// 添加设置优先级限速的方法
+void
+PausableQueueDisc::SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits)
+{
+    NS_LOG_FUNCTION(this);
+    
+    // 首先清空现有的限速配置
+    m_priorityToLeakyBucket.clear();
+    
+    // 根据传入的配置设置限速
+    for (const auto& rateLimit : rateLimits)
+    {
+        uint32_t priority = std::get<0>(rateLimit);
+        std::string rate = std::get<1>(rateLimit);
+        uint32_t burstSize = std::get<2>(rateLimit);
+        
+        // 创建新的leaky bucket
+        DataRate dataRate(rate);
+        Ptr<LeakyBucket> leakyBucket = CreateObject<LeakyBucket>(dataRate, burstSize, MakeCallback(&PausableQueueDisc::Run, this));
+        m_priorityToLeakyBucket[priority] = leakyBucket;
+    }
+    
+    // 没设置ratelimit的优先级对应的ptr自动为null（因为不在map中）
 }
 
 std::shared_ptr<PausableQueueDisc::Stats>
@@ -609,7 +630,6 @@ PausableQueueDisc::Stats::CollectAndCheck()
         vQueueStats.emplace_back(qd->GetStats());
     }
 }
-
 TypeId
 PausableQueueDiscClass::GetTypeId()
 {

@@ -165,7 +165,7 @@ class PausableQueueDisc : public QueueDisc
      * \brief Default configuration, construct a strict priority m_priorityToInnerQueue.
      */
     void SetDefaultStrictPriority();
-
+     void SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits);
   protected:
     Ptr<Node> m_node; //!< Node owning this NetDevice
 
@@ -199,7 +199,7 @@ class PausableQueueDisc : public QueueDisc
     /***** Members for WDRR *****/
     std::map<uint32_t, std::vector<uint32_t>>
         m_priorityToInnerQueue; //<! Map from priority to inner queue index
-    std::map<uint32_t, LeakyBucket>
+    std::map<uint32_t, Ptr<LeakyBucket>>
         m_priorityToLeakyBucket; //<! Map from priority to leaky bucket for rate limiting
     
 }; // class PausableQueueDisc

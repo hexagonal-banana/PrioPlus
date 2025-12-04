@@ -38,43 +38,13 @@ class RoCEv2Nocc : public RoCEv2CongestionOps
      * \brief Get the type ID.
      * \return the object TypeId
      */
-    static TypeId GetTypeId(void)
-    {
-        static TypeId tid = TypeId("ns3::RoCEv2Nocc")
-                                .SetParent<RoCEv2CongestionOps>()
-                                .AddConstructor<RoCEv2Nocc>()
-                                .SetGroupName("Dcb")
-                                .AddAttribute("FairShare",
-                                              "Set the rate to the fair share",
-                                              BooleanValue(false),
-                                              MakeBooleanAccessor(&RoCEv2Nocc::m_fairShare),
-                                              MakeBooleanChecker())
-                                .AddAttribute("TargetInflight",
-                                              "Set the target inflight",
-                                              DoubleValue(1.0),
-                                              MakeDoubleAccessor(&RoCEv2Nocc::m_targetInflight),
-                                              MakeDoubleChecker<double>());
-        return tid;
-    }
+    static TypeId GetTypeId(void);
 
-    RoCEv2Nocc()
-        : RoCEv2CongestionOps(std::make_shared<Stats>()),
-          m_stats(std::dynamic_pointer_cast<Stats>(RoCEv2CongestionOps::m_stats))
-    {
-        Init();
-    }
+    RoCEv2Nocc();
 
-    RoCEv2Nocc(Ptr<RoCEv2SocketState> sockState)
-        : RoCEv2CongestionOps(sockState, std::make_shared<Stats>()),
-          m_stats(std::dynamic_pointer_cast<Stats>(RoCEv2CongestionOps::m_stats))
-    {
-        Init();
-    }
+    RoCEv2Nocc(Ptr<RoCEv2SocketState> sockState);
 
-    std::string GetName() const override
-    {
-        return "NoCC";
-    }
+    std::string GetName() const override;
 
     inline std::shared_ptr<RoCEv2CongestionOps::Stats> GetStats() const
     {
@@ -82,11 +52,7 @@ class RoCEv2Nocc : public RoCEv2CongestionOps
         return nullptr;
     }
 
-    void Init()
-    {
-        m_fairShare = false;
-        RegisterCongestionType(GetTypeId());
-    }
+    void Init();
 
     virtual void SetReady() override;
     

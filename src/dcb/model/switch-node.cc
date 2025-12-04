@@ -5,6 +5,7 @@
 #include "ns3/ipv4-global-routing.h"
 #include "ns3/point-to-point-net-device.h"
 #include "ns3/traffic-control-layer.h"
+#include "ns3/ipv4-global-routing.h"
 
 namespace ns3
 {
@@ -122,11 +123,28 @@ SwitchNode::GetEgressDevIndex(Ptr<Packet> packet)
 }
 
 void
-SwitchNode::SendIpv4Packet(Ptr<Packet> packet)
+SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
 {
     uint32_t devIdx = GetEgressDevIndex(packet);
+    PathTag pathTag;
+    if(packet->PeekPacketTag(pathTag))
+    {
+        if(pathTag.forward){
+            pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
+            packet->ReplacePacketTag(pathTag);
+        }
+        else{
+            devIdx=pathTag.PopInterfaceIndex();
+            packet->ReplacePacketTag(pathTag);
+        }
+    }
+    else{
+        pathTag.forward=true;
+        pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
+        packet->AddPacketTag(pathTag);
+    }//first hop
     auto dev = GetDevice(devIdx);
-
+    
     Ipv4Header ipv4H;
     packet->RemoveHeader(ipv4H);
     ipv4H.SetTtl(ipv4H.GetTtl() - 1);
@@ -172,7 +190,7 @@ SwitchNode::ReceiveFromDevice(Ptr<NetDevice> device,
 void
 SwitchNode::ReceiveIpv4Packet(Ptr<NetDevice> inDev, Ptr<const Packet> packet)
 {
-    SendIpv4Packet(packet->Copy());
+    SendIpv4Packet(inDev,packet->Copy());
 }
 
 void
@@ -184,7 +202,7 @@ SwitchNode::ReceivePacketAfterTc(Ptr<NetDevice> dev,
                                  NetDevice::PacketType packetType)
 {
     NS_LOG_FUNCTION(this << dev << protocol << from << to);
-    SendIpv4Packet(packet->Copy());
+    SendIpv4Packet(dev,packet->Copy());
 }
 
 } // namespace ns3

@@ -1,0 +1,86 @@
+{
+  "1": {
+    "1": {
+      "throughput_bitps_sum": 51200000000.0,
+      "throughput_gb_sum": 6.4
+    },
+    "2": {
+      "throughput_bitps_sum": 843200000000.0,
+      "throughput_gb_sum": 105.4
+    },
+    "3": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "4": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "5": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    }
+  },
+  "2": {
+    "1": {
+      "throughput_bitps_sum": 51200000000.0,
+      "throughput_gb_sum": 6.4
+    },
+    "2": {
+      "throughput_bitps_sum": 843200000000.0,
+      "throughput_gb_sum": 105.4
+    }
+  },
+  "3": {
+    "1": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "2": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    }
+  },
+  "4": {
+    "1": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "2": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    }
+  },
+  "5": {
+    "1": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "2": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    }
+  },
+  "6": {
+    "1": {
+      "throughput_bitps_sum": 51200000000.0,
+      "throughput_gb_sum": 6.4
+    },
+    "2": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "3": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "4": {
+      "throughput_bitps_sum": 0.0,
+      "throughput_gb_sum": 0.0
+    },
+    "5": {
+      "throughput_bitps_sum": 843200000000.0,
+      "throughput_gb_sum": 105.4
+    }
+  }
+}

@@ -220,6 +220,27 @@ JsonCallIfExistsBool(const boost::json::object& obj,
     return true;
 }
 
+inline bool
+JsonCallIfExistsArray(const boost::json::object& obj,
+                      std::string field,
+                      std::function<void(const boost::json::array&)> callback)
+{
+    boost::json::object::const_iterator subobj = obj.find(field);
+    if (subobj == obj.end())
+    {
+        return false;
+    }
+    try
+    {
+        callback(subobj->value().get_array());
+        return true;
+    }
+    catch (const std::exception& err)
+    {
+        return false;
+    }
+}
+
 } // namespace json_util
 
 } // namespace ns3

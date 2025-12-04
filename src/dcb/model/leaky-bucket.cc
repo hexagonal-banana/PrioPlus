@@ -54,7 +54,10 @@ namespace ns3
         NS_LOG_FUNCTION(this);
         //std::cout << "Refill called, available tokens: " << m_availableTokens << std::endl;
         m_availableTokens = std::min(m_availableTokens + m_RefillAmount, m_capacity);
-        m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
+        if (m_refillEvent.IsExpired()&&!isFull())
+        {
+            m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
+        }
         if (!m_RefillCallback.IsNull())
         {
             m_RefillCallback();
@@ -64,8 +67,8 @@ namespace ns3
 
     bool LeakyBucket::CanConsume(uint32_t bytes)
     {
-        if(m_refillEvent.IsExpired())
-            m_refillEvent = Simulator::ScheduleNow(&LeakyBucket::Refill, this);
+        if(m_refillEvent.IsExpired()&&!isFull())
+            m_refillEvent = Simulator::Schedule(m_RefillInterval,&LeakyBucket::Refill, this);
         NS_LOG_FUNCTION(this << bytes);
         return m_availableTokens >= bytes;
     }
@@ -79,4 +82,26 @@ namespace ns3
         return;
     }
 
+    void LeakyBucket::Pause()
+    {
+        NS_LOG_FUNCTION(this);
+        if (!m_refillEvent.IsExpired())
+        {
+            m_refillEvent.Cancel();
+        }
+    }
+    void LeakyBucket::Resume()
+    {
+        NS_LOG_FUNCTION(this);
+        if (m_refillEvent.IsExpired())
+        {
+            m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
+        }
+    }
+
+    bool LeakyBucket::isFull()
+    {
+        NS_LOG_FUNCTION(this);
+        return m_availableTokens == m_capacity;
+    }
 }

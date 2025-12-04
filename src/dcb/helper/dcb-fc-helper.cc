@@ -336,6 +336,12 @@ DcbFcHelper::Install(Ptr<Node> node)
         {
             qDisc->SetDefaultStrictPriority();
         }
+
+        // Set priority rate limits, if have
+        if (m_prioRateLimits.size() > 0)
+        {
+            qDisc->SetPriorityRateLimits(m_prioRateLimits);
+        }
     }
 
     if (dcbTc != nullptr)
@@ -520,6 +526,12 @@ void
 DcbFcHelper::SetMaxCredit(uint32_t maxCredit)
 {
     m_maxCredit = maxCredit;
+}
+
+void
+DcbFcHelper::SetPrioRateLimit(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits)
+{
+    m_prioRateLimits = rateLimits;
 }
 
 } // namespace ns3

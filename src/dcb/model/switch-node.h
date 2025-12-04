@@ -30,7 +30,7 @@ class SwitchNode : public Node
   protected:
     void DoInitialize() override;
     uint32_t GetEgressDevIndex(Ptr<Packet> packet); // returns ECMP calculated egress port
-    void SendIpv4Packet(Ptr<Packet> packet);
+    void SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet);
     virtual void ReceiveIpv4Packet(Ptr<NetDevice> inDev, Ptr<const Packet> packet);
 
   private:

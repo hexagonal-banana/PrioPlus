@@ -26,6 +26,7 @@
 #include "ns3/ipv4-address.h"
 #include "ns3/ptr.h"
 #include "ns3/random-variable-stream.h"
+#include "ns3/rocev2-credit-spary.h"
 
 #include <list>
 #include <stdint.h>
@@ -237,6 +238,7 @@ class Ipv4GlobalRouting : public Ipv4RoutingProtocol
         NONE,
         PER_PACKET_ECMP,
         PER_FLOW_ECMP,
+        //PER_PACKET_SYMMETRIC_ECMP
     };
 
   protected:
@@ -306,6 +308,26 @@ class Ipv4GlobalRouting : public Ipv4RoutingProtocol
     ASExternalRoutes m_ASexternalRoutes; //!< External routes imported
 
     Ptr<Ipv4> m_ipv4; //!< associated IPv4 instance
+};
+
+class PathTag: public Tag
+{
+    public:
+        PathTag();
+        ~PathTag() override;
+        static TypeId GetTypeId();
+        virtual TypeId GetInstanceTypeId() const override;
+        virtual uint32_t GetSerializedSize() const override;
+        virtual void Serialize(TagBuffer i) const override;
+        virtual void Deserialize(TagBuffer i) override;
+        virtual void Print(std::ostream& os) const override;
+
+        void AppendInterfaceIndex(uint32_t index);
+        uint32_t PopInterfaceIndex();
+        bool forward;//switch append path when forward, otherwise, pop path to select next hop
+    private:
+    std::vector<uint32_t> m_path_device_interface_indexes;
+    uint32_t m_path_length;
 };
 
 } // Namespace ns3
