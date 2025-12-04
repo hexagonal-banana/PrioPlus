@@ -100,7 +100,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
-                "config/demos/leaky-bucket.json"
+                "config/demos/symmetric-hashing.json"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

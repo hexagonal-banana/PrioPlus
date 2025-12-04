@@ -111,7 +111,7 @@
             "nodes": "[0]",
             "protocolGroup": "RoCEv2",
             "applicationConfig":{
-                "CongestionType": "ns3::RoCEv2CreditSpary",
+                "CongestionType": "ns3::RoCEv2CreditSpray",
                 "SendEnabled": true,
                 "TrafficPattern": "SendOnce",
                 "TrafficSizeBytes": 1000000,

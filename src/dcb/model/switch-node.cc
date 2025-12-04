@@ -5,7 +5,7 @@
 #include "ns3/ipv4-global-routing.h"
 #include "ns3/point-to-point-net-device.h"
 #include "ns3/traffic-control-layer.h"
-#include "ns3/ipv4-global-routing.h"
+#include "ns3/random-variable-stream.h"  // 添加随机变量流头文件
 
 namespace ns3
 {
@@ -14,11 +14,33 @@ NS_LOG_COMPONENT_DEFINE("SwitchNode");
 
 NS_OBJECT_ENSURE_REGISTERED(SwitchNode);
 
+// Define the static member variable
+uint64_t SwitchNode::m_randStream = 0;
+
 TypeId
 SwitchNode::GetTypeId()
 {
-    static TypeId tid = TypeId("SwitchNode").SetParent<Node>().AddConstructor<SwitchNode>();
+    static TypeId tid = TypeId("SwitchNode").
+                        SetParent<Node>()
+                        .AddConstructor<SwitchNode>()
+                        .SetGroupName("Dcb")
+                        .AddAttribute("RoutingMode",
+                                      "The routing mode",
+                                      EnumValue(RoutingMode::PER_PACKET_SYMMETRIC),
+                                      MakeEnumAccessor(&SwitchNode::m_RoutingMode),
+                                      MakeEnumChecker(
+                                            RoutingMode::PER_PACKET, "PER_PACKET",
+                                            RoutingMode::PER_FLOW_ECMP, "PER_FLOW_ECMP",
+                                            RoutingMode::PER_PACKET_SYMMETRIC, "PER_PACKET_SYMMETRIC"
+                                                      ));
     return tid;
+}
+
+SwitchNode::SwitchNode()
+{
+    NS_LOG_FUNCTION(this);
+    m_rand = CreateObject<UniformRandomVariable>(); 
+    m_rand->SetStream(SwitchNode::m_randStream++);
 }
 
 void
@@ -122,16 +144,36 @@ SwitchNode::GetEgressDevIndex(Ptr<Packet> packet)
     return egressNetDevs[idx];
 }
 
+uint32_t SwitchNode::GetEgressDevIndexRandom(Ptr<Packet> packet)
+{
+    Ipv4Header ipv4H;
+    Ptr<Packet> p = packet->Copy();
+    p->RemoveHeader(ipv4H);
+
+    auto& egressNetDevs = m_routeTable[ipv4H.GetDestination().Get()];
+    return egressNetDevs[m_rand->GetInteger(0, egressNetDevs.size() - 1)];
+}
 void
 SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
 {
-    uint32_t devIdx = GetEgressDevIndex(packet);
+    uint32_t devIdx;
+
+    switch (m_RoutingMode)
+    {
+    case PER_FLOW_ECMP:
+        devIdx = GetEgressDevIndex(packet);
+        break;
+    case PER_PACKET:
+        devIdx = GetEgressDevIndexRandom(packet);
+        break;
+    case PER_PACKET_SYMMETRIC:
     PathTag pathTag;
     if(packet->PeekPacketTag(pathTag))
     {
         if(pathTag.forward){
             pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
             packet->ReplacePacketTag(pathTag);
+            devIdx=GetEgressDevIndexRandom(packet);
         }
         else{
             devIdx=pathTag.PopInterfaceIndex();
@@ -142,7 +184,10 @@ SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
         pathTag.forward=true;
         pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
         packet->AddPacketTag(pathTag);
+        devIdx=GetEgressDevIndexRandom(packet);
     }//first hop
+    break;
+    }
     auto dev = GetDevice(devIdx);
     
     Ipv4Header ipv4H;

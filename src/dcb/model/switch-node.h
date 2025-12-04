@@ -7,6 +7,7 @@
 #include "ns3/packet.h"
 #include "ns3/tcp-header.h"
 #include "ns3/udp-header.h"
+#include "ns3/random-variable-stream.h"
 #include <map>
 namespace ns3
 {
@@ -17,9 +18,10 @@ namespace ns3
  */
 class SwitchNode : public Node
 {
+
   public:
     static TypeId GetTypeId();
-    SwitchNode() = default;
+    SwitchNode();
     void ReceivePacketAfterTc(Ptr<NetDevice> dev,
                               Ptr<const Packet> packet,
                               uint16_t protocol,
@@ -30,6 +32,7 @@ class SwitchNode : public Node
   protected:
     void DoInitialize() override;
     uint32_t GetEgressDevIndex(Ptr<Packet> packet); // returns ECMP calculated egress port
+    uint32_t GetEgressDevIndexRandom(Ptr<Packet> packet); // returns random egress port
     void SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet);
     virtual void ReceiveIpv4Packet(Ptr<NetDevice> inDev, Ptr<const Packet> packet);
 
@@ -42,8 +45,18 @@ class SwitchNode : public Node
   private:
     std::map<uint32_t, std::vector<int>> m_routeTable;
 
+    static uint64_t m_randStream;
+    Ptr<UniformRandomVariable> m_rand;  
+
     constexpr static const uint32_t HASH_BUF_SIZE = 12;
 
+    uint32_t m_RoutingMode;
+    enum RoutingMode
+    {
+        PER_PACKET,
+        PER_FLOW_ECMP,
+        PER_PACKET_SYMMETRIC
+    };
     union HashBuf {
         struct
         {

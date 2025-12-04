@@ -1,4 +1,4 @@
-#include "rocev2-credit-spary.h"
+#include "rocev2-credit-spray.h"
 #include "ns3/log.h"
 #include "ns3/ipv4-global-routing.h"
 #include "rocev2-congestion-ops.h"

@@ -39,7 +39,7 @@ build_lib(
 	  model/rocev2-poseidon.cc
 	  model/rocev2-d2tcp.cc
 	  model/rocev2-nocc.cc
-	  model/rocev2-credit-spary.cc
+	  model/rocev2-credit-spray.cc
 	  model/switch-node.cc
 	  model/leaky-bucket.cc
 	  utils/hpcc-header.cc
@@ -86,7 +86,7 @@ build_lib(
 	  model/rocev2-d2tcp.h
 	  model/rocev2-nocc.h
 	  model/switch-node.h
-	  model/rocev2-credit-spary.h
+	  model/rocev2-credit-spray.h
 	  model/leaky-bucket.h
 	  utils/hpcc-header.h
 	  utils/poseidon-header.h

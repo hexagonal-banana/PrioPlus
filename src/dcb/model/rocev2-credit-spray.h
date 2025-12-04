@@ -1,5 +1,5 @@
-#ifndef ROCERV2_CREDIT_SPARY_H
-#define ROCERV2_CREDIT_SPARY_H
+#ifndef ROCERV2_CREDIT_SPRAY_H
+#define ROCERV2_CREDIT_SPRAY_H
 
 #include "rocev2-nocc.h"
 
@@ -25,4 +25,4 @@ class RoCEv2CreditSpary : public RoCEv2Nocc
     void UpdateStateWithGenACK(Ptr<Packet> packet, Ptr<Packet> ackPacket) override;
 };
 } // namespace ns3
-#endif // ROCERV2_CREDIT_SPARY_H
+#endif // ROCERV2_CREDIT_SPRAY_H
