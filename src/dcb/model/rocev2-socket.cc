@@ -339,8 +339,8 @@ RoCEv2Socket::ForwardUp(Ptr<Packet> packet,
 
     m_sockState->m_receivedEcn = header.GetEcn() == Ipv4Header::EcnType::ECN_CE;
 
-    // If the packet has ProbePacketTag, it is a probe packet or a probe ack packet of RoCEv2Prioplus
-    // Should be handled by HandleProbePacket
+    // If the packet has ProbePacketTag, it is a probe packet or a probe ack packet of
+    // RoCEv2Prioplus Should be handled by HandleProbePacket
     ProbePacketTag probeTag;
     if (packet->RemovePacketTag(probeTag))
     {
@@ -389,7 +389,6 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
 
     // Record the expected PSN, for both ack and nack
     m_stats->RecordExpectedPsn(roce.GetPSN());
-
     switch (aeth.GetSyndromeType())
     {
     case AETHeader::SyndromeType::FC_DISABLED: { // normal ACK
@@ -760,6 +759,11 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId)
         prioplus->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
         prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
     }
+    else if (congTypeId == RoCEv2CreditSpraying::GetTypeId())
+    {
+        Ptr<RoCEv2CreditSpraying> creditSpraying = DynamicCast<RoCEv2CreditSpraying>(algo);
+        creditSpraying->SetSendCreditReqCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
+    }
 }
 
 void
@@ -1025,10 +1029,11 @@ bool
 RoCEv2Socket::SendProbePacket(uint32_t psn)
 {
     // Check the m_congTypeId, should be RoCEv2Prioplus
-    NS_ASSERT_MSG(
-        m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
-            m_congTypeId == RoCEv2PrioplusSwift::GetTypeId(),
-        "Sending probe, but the congestion control type of the socket is not RoCEv2Prioplus.");
+    NS_ASSERT_MSG(m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
+                      m_congTypeId == RoCEv2PrioplusSwift::GetTypeId() ||
+                      m_congTypeId == RoCEv2CreditSpraying::GetTypeId(),
+                  "Sending probe, but the congestion control type of the socket is not "
+                  "RoCEv2Prioplus / RoCEv2CreditSpraying.");
 
     // if (!CheckQueueDiscAvaliable(GetPriority()))
     // {

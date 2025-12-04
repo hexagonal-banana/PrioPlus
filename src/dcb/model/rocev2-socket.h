@@ -21,6 +21,7 @@
 #define ROCEV2_SOCKET_H
 
 #include "rocev2-congestion-ops.h"
+#include "rocev2-credit-spraying.h"
 #include "rocev2-prioplus-ledbat.h"
 #include "rocev2-prioplus-swift.h"
 #include "udp-based-socket.h"
@@ -245,7 +246,8 @@ class DcbTxBuffer : public Object
     Callback<RoCEv2Header> m_createRocev2HeaderCb;
 
     std::deque<DcbTxBufferItem> m_buffer;
-    uint32_t m_frontPsn; // PSN of the front item in the buffer. Only increase when acked.
+    uint32_t m_frontPsn;     // PSN of the front item in the buffer. Only increase when acked.
+    uint32_t m_prevFrontPsn; // previous FrontPsn.
     std::priority_queue<uint32_t, std::vector<uint32_t>, std::greater<>>
         m_txQueue;             // PSN of the items to be sent
     std::vector<bool> m_acked; // Whether the packet with the PSN is acked, serve as a bitmap in
@@ -856,7 +858,6 @@ class ProbePacketTag : public Tag
     bool m_isProbe; //!< if true, the packet is a probe packet, otherwise, it is a ACK of probe
                     //!< packet
 };
-
 
 } // namespace ns3
 
