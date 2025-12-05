@@ -95,4 +95,5 @@ build_lib(
 	  ${libinternet}
 	  ${traffic-control}
 	  ${libdc-env}
+	  ${Boost_LIBRARIES}
 )
