@@ -45,7 +45,14 @@ class IrnHeader;
 enum RoCEv2RetxMode : uint8_t
 {
     GBN, // Go Back N
-    IRN  // Improved RoCE NIC, see Revisiting Network Support for RDMA by Mittal et al.
+    IRN, // Improved RoCE NIC, see Revisiting Network Support for RDMA by Mittal et al.
+    NONE // No retransmission, for packet spraying only.
+};
+
+enum RoCEv2AckMode : uint8_t
+{
+    SENDER_DRIVEN, // Sender-driven ACK, Receiver is expected to ack every packet it receives.
+    RECEIVER_DRIVEN, // Receiver-driven ACK, Receiver will decide when to ack.
 };
 
 class DcbTxBuffer : public Object
@@ -537,10 +544,12 @@ class RoCEv2Socket : public UdpBasedSocket
      * \brief Enable listener mode and set recv callback for flow sockets.
      */
     void SetListenerMode(Callback<void, Ptr<Socket>> recvCb);
+
     bool IsListener() const
     {
         return m_isListener;
     }
+
     /**
      * \brief Bind a receive socket to a specific flow (dstQP, srcIP, srcQP).
      */
@@ -654,6 +663,7 @@ class RoCEv2Socket : public UdpBasedSocket
         Ipv4Address srcAddr;
         uint32_t srcQP;
         uint32_t dstQP;
+
         bool operator<(const RxFlowKey& other) const
         {
             if (srcAddr != other.srcAddr)
@@ -785,6 +795,7 @@ class RoCEv2Socket : public UdpBasedSocket
     Time m_flowStartTime;
 
     RoCEv2RetxMode m_retxMode;
+    RoCEv2AckMode m_ackMode;
 
     uint32_t m_innerPrio; //!< The inner priority of the sockets when contenting with other sockets
 
@@ -908,6 +919,28 @@ class ProbePacketTag : public Tag
   private:
     bool m_isProbe; //!< if true, the packet is a probe packet, otherwise, it is a ACK of probe
                     //!< packet
+};
+
+class CreditRequestTag : public Tag
+{
+  public:
+    static TypeId GetTypeId();
+    TypeId GetInstanceTypeId() const override;
+    uint32_t GetSerializedSize() const override;
+    void Serialize(TagBuffer buf) const override;
+    void Deserialize(TagBuffer buf) override;
+    void Print(std::ostream& os) const override;
+
+    CreditRequestTag();
+    explicit CreditRequestTag(bool isRequest);
+
+    inline bool IsRequest() const
+    {
+        return m_isRequest;
+    }
+
+  private:
+    bool m_isRequest{false};
 };
 
 } // namespace ns3

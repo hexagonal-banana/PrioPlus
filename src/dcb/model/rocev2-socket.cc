@@ -61,7 +61,20 @@ RoCEv2Socket::GetTypeId()
                           "The retransmission mode",
                           EnumValue(RoCEv2RetxMode::GBN),
                           MakeEnumAccessor(&RoCEv2Socket::m_retxMode),
-                          MakeEnumChecker(RoCEv2RetxMode::GBN, "GBN", RoCEv2RetxMode::IRN, "IRN"))
+                          MakeEnumChecker(RoCEv2RetxMode::GBN,
+                                          "GBN",
+                                          RoCEv2RetxMode::IRN,
+                                          "IRN",
+                                          RoCEv2RetxMode::NONE,
+                                          "None"))
+            .AddAttribute("AckMode",
+                          "The ACK mode",
+                          EnumValue(RoCEv2AckMode::SENDER_DRIVEN),
+                          MakeEnumAccessor(&RoCEv2Socket::m_ackMode),
+                          MakeEnumChecker(RoCEv2AckMode::SENDER_DRIVEN,
+                                          "SENDER_DRIVEN",
+                                          RoCEv2AckMode::RECEIVER_DRIVEN,
+                                          "RECEIVER_DRIVEN"))
             .AddAttribute("CNPInterval",
                           "The CNP interval",
                           TimeValue(MicroSeconds(50)),
@@ -427,6 +440,10 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
             packet->RemoveHeader(irnH);
             IrnReactToNack(roce.GetPSN(), irnH);
         }
+        else if (m_retxMode == NONE)
+        {
+            // Do nothing
+        }
         break;
     }
     default: {
@@ -455,6 +472,13 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
 {
     NS_LOG_FUNCTION(this << packet);
 
+    CreditRequestTag crTag;
+    if (packet->PeekPacketTag(crTag))
+    {
+        m_rxState.ccOps->UpdateStateWithOutbandPkt(packet, roce, 0);
+        return;
+    }
+
     Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(packet);
     InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
 
@@ -478,7 +502,7 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
     {
         m_rxState.ePsnAdvancedAfterNack = true;
 
-        if (roce.GetAckQ())
+        if (roce.GetAckQ() && m_ackMode == RoCEv2AckMode::SENDER_DRIVEN)
         { // send ACK
             Ptr<Packet> ack = RoCEv2L4Protocol::GenerateACK(m_rxState.dstQP,
                                                             m_rxState.srcQP,
@@ -533,8 +557,12 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
             nack->AddHeader(rocev2Header);
         }
 
-        m_innerProto->Send(
-            nack, header.GetDestination(), header.GetSource(), m_rxState.dstQP, m_rxState.srcQP, nullptr);
+        m_innerProto->Send(nack,
+                           header.GetDestination(),
+                           header.GetSource(),
+                           m_rxState.dstQP,
+                           m_rxState.srcQP,
+                           nullptr);
     }
 }
 
@@ -542,15 +570,19 @@ Ptr<RoCEv2CongestionOps>
 RoCEv2Socket::CreateCcOpsFromTag(Ptr<Packet> packet)
 {
     CongestionTypeTag ctTag;
+    Ptr<RoCEv2CongestionOps> ccOps = nullptr;
     if (!packet->PeekPacketTag(ctTag))
     {
         ObjectFactory factory;
         factory.SetTypeId(m_congTypeId);
-        return factory.Create<RoCEv2CongestionOps>();
+        ccOps = factory.Create<RoCEv2CongestionOps>();
+    } else{
+        ObjectFactory congestionAlgorithmFactory;
+        congestionAlgorithmFactory.SetTypeId(ctTag.GetCongestionTypeId());
+        ccOps = congestionAlgorithmFactory.Create<RoCEv2CongestionOps>();
     }
-    ObjectFactory congestionAlgorithmFactory;
-    congestionAlgorithmFactory.SetTypeId(ctTag.GetCongestionTypeId());
-    return congestionAlgorithmFactory.Create<RoCEv2CongestionOps>();
+    ccOps->SetSockState(m_sockState);
+    return ccOps;
 }
 
 void
@@ -567,12 +599,14 @@ RoCEv2Socket::InitRxStateIfNeeded(const RoCEv2Header& roce,
     m_rxState.srcQP = roce.GetSrcQP();
     m_rxState.srcAddr = header.GetSource();
     m_rxState.ccOps = ccOps;
+    m_rxState.ccOps->SetSendOutbandPktCb(MakeCallback(&RoCEv2Socket::SendOutbandPkt, this));
     m_rxState.incomingInterface = incomingInterface;
     m_rxState.ePsnAdvancedAfterNack = false;
     m_rxState.receivedECN = false;
-    m_rxState.rxBuffer = std::make_unique<DcbRxBuffer>(MakeCallback(&RoCEv2Socket::DoForwardUp, this),
-                                                       incomingInterface,
-                                                       m_retxMode);
+    m_rxState.rxBuffer =
+        std::make_unique<DcbRxBuffer>(MakeCallback(&RoCEv2Socket::DoForwardUp, this),
+                                      incomingInterface,
+                                      m_retxMode);
 }
 
 void
@@ -635,6 +669,7 @@ RoCEv2Socket::CreateReceiverSocketForFlow(const RoCEv2Header& roce,
     }
     Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(originalPacket);
     sock->InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
+    sock->m_rxState.ccOps->SetStopTime(Time::Max()); // avoid receiver socket close
     return sock;
 }
 
@@ -698,13 +733,15 @@ RoCEv2Socket::ScheduleNextCNP(Ipv4Header header)
 
     CheckControlQueueDiscAvaliable();
     Ptr<Packet> cnp = RoCEv2L4Protocol::GenerateCNP(m_rxState.dstQP, m_rxState.srcQP);
-    m_innerProto
-        ->Send(cnp, header.GetDestination(), header.GetSource(), m_rxState.dstQP, m_rxState.srcQP, nullptr);
+    m_innerProto->Send(cnp,
+                       header.GetDestination(),
+                       header.GetSource(),
+                       m_rxState.dstQP,
+                       m_rxState.srcQP,
+                       nullptr);
     m_rxState.receivedECN = false;
-    m_rxState.lastCNPEvent = Simulator::Schedule(GetCNPInterval(),
-                                                 &RoCEv2Socket::ScheduleNextCNP,
-                                                 this,
-                                                 header);
+    m_rxState.lastCNPEvent =
+        Simulator::Schedule(GetCNPInterval(), &RoCEv2Socket::ScheduleNextCNP, this, header);
 }
 
 int
@@ -1039,6 +1076,11 @@ RoCEv2Socket::RetransmissionTimeout()
         // m_txBuffer.RetransmitRange(m_txBuffer.GetFrontPsn(), m_txBuffer.GetMaxAckedPsn()-1);
         m_txBuffer.RetransmitFrom(m_txBuffer.GetFrontPsn());
     }
+    else if (m_retxMode == RoCEv2RetxMode::NONE)
+    {
+        NS_LOG_WARN("Retransmission mode is NONE, skipping retransmission.");
+        return;
+    }
 
     // Reschedule the retransmission timer
     Time rtoTime = GetRTOTime();
@@ -1072,6 +1114,10 @@ RoCEv2Socket::GetRTOTime()
             return m_irnRtoLow;
         }
     }
+    else if (m_retxMode == RoCEv2RetxMode::NONE)
+    {
+        return m_rto;
+    }
     else
     {
         NS_ASSERT_MSG(false, "wrong rtx mode");
@@ -1093,13 +1139,6 @@ RoCEv2Socket::SendOutbandPkt(uint32_t psn,
                              bool isDataPkt,
                              const std::vector<std::reference_wrapper<const Tag>>& packetTags)
 {
-    // Check the m_congTypeId, should be RoCEv2Prioplus
-    NS_ASSERT_MSG(m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
-                      m_congTypeId == RoCEv2PrioplusSwift::GetTypeId() ||
-                      m_congTypeId == RoCEv2CreditSpraying::GetTypeId(),
-                  "Sending probe, but the congestion control type of the socket is not "
-                  "RoCEv2Prioplus / RoCEv2CreditSpraying.");
-
     // if (!CheckQueueDiscAvaliable(GetPriority()))
     // {
     //     // The queue disc is unavaliable, wait for the next sending.
@@ -1135,7 +1174,7 @@ RoCEv2Socket::SendOutbandPkt(uint32_t psn,
         // Generate standard ACK packet carrying the provided PSN
         packet = RoCEv2L4Protocol::GenerateACK(m_endPoint->GetLocalPort(),
                                                m_endPoint->GetPeerPort(),
-                                               psn);
+                                               m_rxState.rxBuffer->GetExpectedPsn());
     }
 
     for (const auto& tag : packetTags)
@@ -1699,7 +1738,10 @@ DcbRxBuffer::Add(uint32_t psn, Ipv4Header ipv4, RoCEv2Header roce, Ptr<Packet> p
                          << psn << " at " << Simulator::Now().GetNanoSeconds() << "ns.");
         }
     }
-
+    else if (m_retxMode == RoCEv2RetxMode::NONE)
+    {
+        m_buffer.emplace(psn, DcbRxBufferItem(ipv4, roce, payload));
+    }
     // Check and forward the in order packets
     while (m_buffer.find(m_expectedPsn) != m_buffer.end())
     {
@@ -1937,6 +1979,7 @@ IrnHeader::GetAckedPsn() const
 
 // Register this type
 NS_OBJECT_ENSURE_REGISTERED(ProbePacketTag);
+NS_OBJECT_ENSURE_REGISTERED(CreditRequestTag);
 
 TypeId
 ProbePacketTag::GetTypeId()
@@ -1994,6 +2037,57 @@ ProbePacketTag::ProbePacketTag(bool isProbe)
       m_isProbe(isProbe)
 {
     NS_LOG_FUNCTION(this << isProbe);
+}
+
+TypeId
+CreditRequestTag::GetTypeId()
+{
+    static TypeId tid = TypeId("ns3::CreditRequestTag")
+                            .SetParent<Tag>()
+                            .SetGroupName("Network")
+                            .AddConstructor<CreditRequestTag>();
+    return tid;
+}
+
+TypeId
+CreditRequestTag::GetInstanceTypeId() const
+{
+    return GetTypeId();
+}
+
+uint32_t
+CreditRequestTag::GetSerializedSize() const
+{
+    return 2;
+}
+
+void
+CreditRequestTag::Serialize(TagBuffer buf) const
+{
+    buf.WriteU8(static_cast<uint8_t>(m_isRequest));
+}
+
+void
+CreditRequestTag::Deserialize(TagBuffer buf)
+{
+    m_isRequest = static_cast<bool>(buf.ReadU8());
+}
+
+void
+CreditRequestTag::Print(std::ostream& os) const
+{
+    os << "IsRequest=" << m_isRequest;
+}
+
+CreditRequestTag::CreditRequestTag()
+    : Tag()
+{
+}
+
+CreditRequestTag::CreditRequestTag(bool isRequest)
+    : Tag(),
+      m_isRequest(isRequest)
+{
 }
 
 } // namespace ns3

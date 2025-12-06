@@ -68,6 +68,13 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
                                const RoCEv2Header& roce,
                                const uint32_t senderNextPSN) override;
 
+    /**
+     * When receiving out-of-band packet (credit request), start sending credit ACKs.
+     */
+    void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
+                                   const RoCEv2Header& roce,
+                                   const uint32_t senderNextPSN) override;
+
     std::string GetName() const override;
 
         class Stats : public RoCEv2CongestionOps::Stats
@@ -99,6 +106,10 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
 
     std::shared_ptr<Stats> m_stats; //!< Statistics
 
+    void StartCreditAckLoop(const RoCEv2Header& roce);
+    void SendCreditAck(uint32_t psn);
+    Time ComputeCreditAckInterval(uint32_t ackBytes) const;
+
     /**
      * \brief Sender sends out CREDIT_REQUEST to request the receiver to send back the Credits.
      * \param rto: the RTO of the CREQ_TimeOut.
@@ -113,6 +124,10 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
     void ScheduleNextCreditReq(Time rto);
 
     EventId m_cReqTimeOut; //!< The event to send credit request again
+    EventId m_creditAckEvent; //!< Repeating event to send credit ACKs
+    Time m_creditAckInterval;
+    double m_creditRateRatio;
+    bool m_stopCreditAckSent{false};
 
 }; // class RoCEv2CreditSpraying
 
