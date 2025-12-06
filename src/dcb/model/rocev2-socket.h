@@ -799,6 +799,7 @@ class RoCEv2Socket : public UdpBasedSocket
      * \return If the packet is sent, return true, otherwise return false.
      */
     bool SendOutbandPkt(uint32_t psn,
+                        bool isDataPkt,
                         const std::vector<std::reference_wrapper<const Tag>>& packetTags);
     /**
      * \brief Handle the probe packet, now only used in PrioPlus.

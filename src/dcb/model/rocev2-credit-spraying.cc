@@ -92,7 +92,7 @@ RoCEv2CreditSpraying::SendCreditRequest(Time rto)
     std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, ppTag};
 
     // Send out-of-band credit request packet
-    bool success = m_sendOutbandPktCb(0, packetTags);
+    bool success = m_sendOutbandPktCb(0, true, packetTags);
     if (success)
     {
         // m_probeSeq += 1;

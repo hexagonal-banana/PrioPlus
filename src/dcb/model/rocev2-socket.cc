@@ -814,7 +814,7 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId)
 
     // Set SendOutbandPkt and SendPendingPacket callbacks for RoCEv2Prioplus
     using SendOutbandCb =
-        Callback<bool, uint32_t, const std::vector<std::reference_wrapper<const Tag>>&>;
+        Callback<bool, uint32_t, bool, const std::vector<std::reference_wrapper<const Tag>>&>;
     const SendOutbandCb sendOutbandCb = MakeCallback(&RoCEv2Socket::SendOutbandPkt, this);
 
     if (congTypeId == RoCEv2PrioplusLedbat::GetTypeId())
@@ -1090,6 +1090,7 @@ RoCEv2Socket::IpTos2Priority(uint8_t ipTos)
 
 bool
 RoCEv2Socket::SendOutbandPkt(uint32_t psn,
+                             bool isDataPkt,
                              const std::vector<std::reference_wrapper<const Tag>>& packetTags)
 {
     // Check the m_congTypeId, should be RoCEv2Prioplus
@@ -1105,25 +1106,37 @@ RoCEv2Socket::SendOutbandPkt(uint32_t psn,
     //     return false;
     // }
 
-    uint32_t probeHeaderSize = m_innerProto->GetHeaderSize() + 4; // 4 bytes for AETHeader
-    // If probe packet is smaller than 64B, use payload to pad it
-    uint32_t probePayloadSize = probeHeaderSize < 64 ? 64 - probeHeaderSize : 0;
+    Ptr<Packet> packet;
 
-    RoCEv2Header rocev2Header{};
-    // FIXME Use UD send only opcode (not used for now) to avoid confusion
-    rocev2Header.SetOpcode(RoCEv2Header::Opcode::UD_SEND_ONLY);
-    rocev2Header.SetDestQP(m_endPoint->GetPeerPort());
-    rocev2Header.SetSrcQP(m_endPoint->GetLocalPort());
-    // The PSN of the probe packet, used for matching probe ack and probe packet
-    rocev2Header.SetPSN(psn);
+    if (isDataPkt)
+    {
+        uint32_t probeHeaderSize = m_innerProto->GetHeaderSize() + 4; // 4 bytes for AETHeader
+        // If probe packet is smaller than 64B, use payload to pad it
+        uint32_t probePayloadSize = probeHeaderSize < 64 ? 64 - probeHeaderSize : 0;
 
-    AETHeader aeth;
-    // FIXME Use FC_DISABLED for now, but should be a dedicated type
-    aeth.SetSyndromeType(AETHeader::SyndromeType::FC_DISABLED);
+        RoCEv2Header rocev2Header{};
+        // FIXME Use UD send only opcode (not used for now) to avoid confusion
+        rocev2Header.SetOpcode(RoCEv2Header::Opcode::UD_SEND_ONLY);
+        rocev2Header.SetDestQP(m_endPoint->GetPeerPort());
+        rocev2Header.SetSrcQP(m_endPoint->GetLocalPort());
+        // The PSN of the probe packet, used for matching probe ack and probe packet
+        rocev2Header.SetPSN(psn);
 
-    Ptr<Packet> packet = Create<Packet>(probePayloadSize);
-    packet->AddHeader(aeth);
-    packet->AddHeader(rocev2Header);
+        AETHeader aeth;
+        // FIXME Use FC_DISABLED for now, but should be a dedicated type
+        aeth.SetSyndromeType(AETHeader::SyndromeType::FC_DISABLED);
+
+        packet = Create<Packet>(probePayloadSize);
+        packet->AddHeader(aeth);
+        packet->AddHeader(rocev2Header);
+    }
+    else
+    {
+        // Generate standard ACK packet carrying the provided PSN
+        packet = RoCEv2L4Protocol::GenerateACK(m_endPoint->GetLocalPort(),
+                                               m_endPoint->GetPeerPort(),
+                                               psn);
+    }
 
     for (const auto& tag : packetTags)
     {

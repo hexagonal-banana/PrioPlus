@@ -611,7 +611,7 @@ RoCEv2PrioplusSwift::SendProbePacket()
     std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, ppTag};
 
     // Send out-of-band probe packet
-    bool success = m_sendOutbandPktCb(m_probeSeq, packetTags);
+    bool success = m_sendOutbandPktCb(m_probeSeq, true, packetTags);
     if (success)
     {
         m_inflightProbes[m_probeSeq] = Simulator::Now().GetNanoSeconds();

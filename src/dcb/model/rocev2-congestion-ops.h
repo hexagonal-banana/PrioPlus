@@ -202,8 +202,10 @@ class RoCEv2CongestionOps : public Object
 
     virtual std::shared_ptr<Stats> GetStats() const;
 
-    using SendOutbandPktCb =
-        Callback<bool, uint32_t, const std::vector<std::reference_wrapper<const Tag>>&>;
+    using SendOutbandPktCb = Callback<bool,
+                                      uint32_t,
+                                      bool,
+                                      const std::vector<std::reference_wrapper<const Tag>>&>;
 
     /**
      * \brief Set callback to send out-of-band packets (probe, credit request, etc.).
