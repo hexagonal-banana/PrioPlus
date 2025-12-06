@@ -1087,18 +1087,7 @@ RoCEv2Socket::HandleProbePacket(Ptr<Packet> packet,
     switch (roce.GetOpcode())
     {
     case RoCEv2Header::Opcode::RC_ACK:
-        if (m_ccOps->GetInstanceTypeId() == RoCEv2PrioplusLedbat::GetTypeId())
-            DynamicCast<RoCEv2PrioplusLedbat>(m_ccOps)->UpdateStateWithRecvProbeAck(
-                packet,
-                roce,
-                m_txBuffer.NextSendPsn());
-        else if (m_ccOps->GetInstanceTypeId() == RoCEv2PrioplusSwift::GetTypeId())
-            DynamicCast<RoCEv2PrioplusSwift>(m_ccOps)->UpdateStateWithRecvProbeAck(
-                packet,
-                roce,
-                m_txBuffer.NextSendPsn());
-        else
-            NS_FATAL_ERROR("Unexpected congestion control type for probe ack packet.");
+        m_ccOps->UpdateStateWithOutbandPkt(packet, roce, m_txBuffer.NextSendPsn());
 
         // After receive an ACK/NACK, restart the retransmission timer
         if (m_rtoEvent.IsRunning())

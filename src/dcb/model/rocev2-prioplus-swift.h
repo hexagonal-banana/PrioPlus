@@ -88,9 +88,9 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
      * When the sender receiving an probe packet's ACK.
      * This function will be passed to RoCEv2Socket as a Callback.
      */
-    void UpdateStateWithRecvProbeAck(Ptr<Packet> probe,
-                                     const RoCEv2Header& roce,
-                                     uint32_t senderNextPSN);
+    void UpdateStateWithOutbandPkt(Ptr<Packet> probe,
+                                   const RoCEv2Header& roce,
+                                   uint32_t senderNextPSN) override;
 
     /**
      * \brief Set send probe callback

@@ -647,9 +647,9 @@ RoCEv2PrioplusSwift::ScheduleProbePacket(Time delay)
 }
 
 void
-RoCEv2PrioplusSwift::UpdateStateWithRecvProbeAck(Ptr<Packet> probe,
-                                                const RoCEv2Header& roce,
-                                                uint32_t senderNextPSN)
+RoCEv2PrioplusSwift::UpdateStateWithOutbandPkt(Ptr<Packet> probe,
+                                              const RoCEv2Header& roce,
+                                              uint32_t senderNextPSN)
 {
     uint32_t ackSeq = roce.GetPSN();
     // Calculate the delay from the ACK

@@ -139,6 +139,17 @@ class RoCEv2CongestionOps : public Object
     }
 
     /**
+     * \brief When receiving an out-of-band packet (e.g., probe ACK), update state if needed.
+     *
+     * Do nothing in this class. Implementations in subclasses are optional.
+     */
+    virtual void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
+                                           const RoCEv2Header& roce,
+                                           const uint32_t senderNextPSN)
+    {
+    }
+
+    /**
      * \brief When RTO timer expires, update the state if needed.
      *
      * Do nothing in this class. And implementions in subclasses is not necessary.

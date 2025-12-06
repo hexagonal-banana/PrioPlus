@@ -611,7 +611,7 @@ RoCEv2PrioplusLedbat::SendProbePacket()
 
     // Schedule next probe
     // This event is just a placeholder and prevent for probe lost, the real probe event is
-    // scheduled in UpdateStateWithRecvProbeAck
+    // scheduled in UpdateStateWithOutbandPkt
     // m_probeEvent =
     //     Simulator::Schedule(100 * m_probeInterval, &RoCEv2PrioplusLedbat::SendProbePacket,
     //     this);
@@ -646,9 +646,9 @@ RoCEv2PrioplusLedbat::ScheduleProbePacket(Time delay)
 }
 
 void
-RoCEv2PrioplusLedbat::UpdateStateWithRecvProbeAck(Ptr<Packet> probe,
-                                                 const RoCEv2Header& roce,
-                                                 uint32_t senderNextPSN)
+RoCEv2PrioplusLedbat::UpdateStateWithOutbandPkt(Ptr<Packet> probe,
+                                               const RoCEv2Header& roce,
+                                               uint32_t senderNextPSN)
 {
     uint32_t ackSeq = roce.GetPSN();
     // Calculate the delay from the ACK
