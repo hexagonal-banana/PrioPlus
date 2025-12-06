@@ -26,7 +26,9 @@
 #include "ns3/timer.h"
 #include "ns3/traced-value.h"
 
+#include <functional>
 #include <map>
+#include <vector>
 
 namespace ns3
 {
@@ -200,8 +202,17 @@ class RoCEv2CongestionOps : public Object
 
     virtual std::shared_ptr<Stats> GetStats() const;
 
+    using SendOutbandPktCb =
+        Callback<bool, uint32_t, const std::vector<std::reference_wrapper<const Tag>>&>;
+
+    /**
+     * \brief Set callback to send out-of-band packets (probe, credit request, etc.).
+     */
+    virtual void SetSendOutbandPktCb(SendOutbandPktCb cb);
+
   protected:
     std::shared_ptr<Stats> m_stats; //!< Statistics
+    SendOutbandPktCb m_sendOutbandPktCb; //!< Callback to send out-of-band packets
 
     /**
      * \return true if current time is not over stopTime.

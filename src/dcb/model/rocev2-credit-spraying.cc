@@ -82,13 +82,17 @@ RoCEv2CreditSpraying::SendCreditRequest(Time rto)
         return;
     }
 
-    NS_ASSERT_MSG(!m_sendCreditReqCb.IsNull(), "SendCreditReqCb not set!");
+    NS_ASSERT_MSG(!m_sendOutbandPktCb.IsNull(), "SendOutbandPktCb not set!");
     // Check if the flow is stopped
     if (CheckStopCondition())
         return;
 
-    // Send a CreditReq packet
-    bool success = m_sendCreditReqCb(0);
+    CongestionTypeTag ctTag(GetTypeId().GetUid());
+    ProbePacketTag ppTag(true);
+    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, ppTag};
+
+    // Send out-of-band credit request packet
+    bool success = m_sendOutbandPktCb(0, packetTags);
     if (success)
     {
         // m_probeSeq += 1;
@@ -116,19 +120,14 @@ RoCEv2CreditSpraying::ScheduleNextCreditReq(Time rto)
 }
 
 void
-RoCEv2CreditSpraying::SetSendCreditReqCb(Callback<bool, uint32_t> sendCreditReqCb)
-{
-    m_sendCreditReqCb = sendCreditReqCb;
-}
-
-void
 RoCEv2CreditSpraying::UpdateStateSend(Ptr<Packet> packet)
 {
     NS_LOG_FUNCTION(this << packet);
 
     // Get packet's PSN from roceheader.
     RoCEv2Header roceHeader;
-    packet->PeekHeader(roceHeader);}
+    packet->PeekHeader(roceHeader);
+}
 
 void
 RoCEv2CreditSpraying::UpdateStateWithRcvACK(Ptr<Packet> ack,

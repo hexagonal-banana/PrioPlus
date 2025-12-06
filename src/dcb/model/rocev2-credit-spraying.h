@@ -25,7 +25,9 @@
 #include "ns3/data-rate.h"
 #include "ns3/rocev2-header.h"
 
+#include <functional>
 #include <map>
+#include <vector>
 
 namespace ns3
 {
@@ -88,10 +90,6 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
         return m_stats;
     }
 
-    /**
-     * \brief Set the callback to send CREDIT_REQUEST packet.
-     */
-    void SetSendCreditReqCb(Callback<bool, uint32_t> sendCreditReqCb);
 
   private:
     /**
@@ -116,7 +114,6 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
 
     EventId m_cReqTimeOut; //!< The event to send credit request again
 
-    Callback<bool, uint32_t> m_sendCreditReqCb; // The callback to send credit request
 }; // class RoCEv2CreditSpraying
 
 } // namespace ns3

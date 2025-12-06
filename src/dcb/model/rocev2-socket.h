@@ -30,8 +30,10 @@
 #include "ns3/rocev2-header.h"
 #include "ns3/traced-callback.h"
 
+#include <functional>
 #include <map>
 #include <memory>
+#include <vector>
 
 namespace ns3
 {
@@ -790,11 +792,14 @@ class RoCEv2Socket : public UdpBasedSocket
 
     /***** Utility for Probe (Like DOCA's RTT Req) *****/
     /**
-     * \brief Send a probe packet, now only used in PrioPlus.
+     * \brief Send an outband packet (e.g., probe/credit request).
      *
+     * \param psn The PSN to be carried in the packet.
+     * \param packetTags Packet tags to attach before sending.
      * \return If the packet is sent, return true, otherwise return false.
      */
-    bool SendProbePacket(uint32_t psn);
+    bool SendOutbandPkt(uint32_t psn,
+                        const std::vector<std::reference_wrapper<const Tag>>& packetTags);
     /**
      * \brief Handle the probe packet, now only used in PrioPlus.
      *

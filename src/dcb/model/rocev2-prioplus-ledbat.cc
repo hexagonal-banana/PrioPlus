@@ -588,13 +588,17 @@ RoCEv2PrioplusLedbat::SendProbePacket()
         return;
     }
 
-    NS_ASSERT_MSG(!m_sendProbeCb.IsNull(), "SendProbeCb not set!");
+    NS_ASSERT_MSG(!m_sendOutbandPktCb.IsNull(), "SendOutbandPktCb not set!");
     // Check if the flow is stopped
     if (CheckStopCondition())
         return;
 
-    // Send a probe packet
-    bool success = m_sendProbeCb(m_probeSeq);
+    CongestionTypeTag ctTag(GetTypeId().GetUid());
+    ProbePacketTag ppTag(true);
+    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, ppTag};
+
+    // Send out-of-band probe packet
+    bool success = m_sendOutbandPktCb(m_probeSeq, packetTags);
     if (success)
     {
         // m_inflightProbes.push_back(std::make_pair(m_probeSeq,
@@ -802,12 +806,6 @@ std::shared_ptr<RoCEv2CongestionOps::Stats>
 RoCEv2PrioplusLedbat::GetStats() const
 {
     return m_stats;
-}
-
-void
-RoCEv2PrioplusLedbat::SetSendProbeCb(Callback<bool, uint32_t> sendProbeCb)
-{
-    m_sendProbeCb = sendProbeCb;
 }
 
 void

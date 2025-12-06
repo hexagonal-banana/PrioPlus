@@ -812,24 +812,27 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId)
     // Record the congestion type
     m_congTypeId = congTypeId;
 
-    // Set SendProbePacket and SendPendingPacket callbacks for RoCEv2Prioplus
+    // Set SendOutbandPkt and SendPendingPacket callbacks for RoCEv2Prioplus
+    using SendOutbandCb =
+        Callback<bool, uint32_t, const std::vector<std::reference_wrapper<const Tag>>&>;
+    const SendOutbandCb sendOutbandCb = MakeCallback(&RoCEv2Socket::SendOutbandPkt, this);
 
     if (congTypeId == RoCEv2PrioplusLedbat::GetTypeId())
     {
         Ptr<RoCEv2PrioplusLedbat> prioplus = DynamicCast<RoCEv2PrioplusLedbat>(algo);
-        prioplus->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
+        prioplus->SetSendOutbandPktCb(sendOutbandCb);
         prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
     }
     else if (congTypeId == RoCEv2PrioplusSwift::GetTypeId())
     {
         Ptr<RoCEv2PrioplusSwift> prioplus = DynamicCast<RoCEv2PrioplusSwift>(algo);
-        prioplus->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
+        prioplus->SetSendOutbandPktCb(sendOutbandCb);
         prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
     }
     else if (congTypeId == RoCEv2CreditSpraying::GetTypeId())
     {
         Ptr<RoCEv2CreditSpraying> creditSpraying = DynamicCast<RoCEv2CreditSpraying>(algo);
-        creditSpraying->SetSendCreditReqCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
+        creditSpraying->SetSendOutbandPktCb(sendOutbandCb);
     }
 }
 
@@ -926,14 +929,7 @@ RoCEv2Socket::CheckQueueDiscAvaliable(uint8_t priority) const
     // TODO Make the threshold clearer
     // Now this threshold is set to 1500B, which is slightly larger than the typical packet size
     QueueSize threshold = QueueSize("1500B");
-    if (qsize < threshold)
-    {
-        return true;
-    }
-    else
-    {
-        return false;
-    }
+    return qsize < threshold;
 }
 
 void
@@ -1093,7 +1089,8 @@ RoCEv2Socket::IpTos2Priority(uint8_t ipTos)
 }
 
 bool
-RoCEv2Socket::SendProbePacket(uint32_t psn)
+RoCEv2Socket::SendOutbandPkt(uint32_t psn,
+                             const std::vector<std::reference_wrapper<const Tag>>& packetTags)
 {
     // Check the m_congTypeId, should be RoCEv2Prioplus
     NS_ASSERT_MSG(m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
@@ -1128,12 +1125,10 @@ RoCEv2Socket::SendProbePacket(uint32_t psn)
     packet->AddHeader(aeth);
     packet->AddHeader(rocev2Header);
 
-    // Add the CongestionTypeTag to the packet
-    CongestionTypeTag ctTag(m_congTypeId.GetUid());
-    packet->AddPacketTag(ctTag);
-    // Add the ProbePacketTag to the packet
-    ProbePacketTag ppTag(true);
-    packet->AddPacketTag(ppTag);
+    for (const auto& tag : packetTags)
+    {
+        packet->AddPacketTag(tag.get());
+    }
 
     m_innerProto->Send(packet,
                        GetLocalAddress(), // src address

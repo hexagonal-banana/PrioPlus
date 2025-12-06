@@ -190,6 +190,12 @@ RoCEv2CongestionOps::GetStats() const
     return m_stats;
 }
 
+void
+RoCEv2CongestionOps::SetSendOutbandPktCb(SendOutbandPktCb cb)
+{
+    m_sendOutbandPktCb = cb;
+}
+
 RoCEv2CongestionOps::Stats::Stats()
 {
     NS_LOG_FUNCTION(this);

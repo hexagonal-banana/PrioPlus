@@ -30,6 +30,7 @@
 
 #include <deque>
 #include <map>
+#include <vector>
 
 namespace ns3
 {
@@ -92,10 +93,6 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
                                    const RoCEv2Header& roce,
                                    uint32_t senderNextPSN) override;
 
-    /**
-     * \brief Set send probe callback
-     */
-    void SetSendProbeCb(Callback<bool, uint32_t> sendProbeCb);
     /**
      * \brief Set send pending data callback
      */
@@ -273,7 +270,6 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
     std::map<uint32_t, uint64_t> m_inflightProbes; //!< <psn, sendTs>
     Ptr<UniformRandomVariable> m_rngProbeTime;     //!< rng to choose probe time
 
-    Callback<bool, uint32_t> m_sendProbeCb;
     /**
      * \brief The SendPendingPacket() call back, called every time transact from probe to can send
      * packet to the network.
