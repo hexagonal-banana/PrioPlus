@@ -130,11 +130,17 @@ UdpBasedL4Protocol::ForwardUp(Ptr<Packet> packet,
 {
     NS_LOG_FUNCTION(this << packet << header << port << incomingIntf);
 
-    uint32_t innerPort = ParseInnerPort(packet, header, port, incomingIntf);
-    InnerEndPoint* endPoint = m_innerEndPoints->Lookup(innerPort);
+    InnerPortInfo portInfo = ParseInnerPorts(packet, header, port, incomingIntf);
+    // Prefer per-flow endpoint (dstQP, srcIP, srcQP) if a dedicated socket was created.
+    InnerEndPoint* endPoint = m_innerEndPoints->Lookup(portInfo.dstPort, portInfo.srcAddr, portInfo.srcPort);
+    if (endPoint == nullptr)
+    {
+        // Fallback to dstQP-only listener endpoint.
+        endPoint = m_innerEndPoints->Lookup(portInfo.dstPort);
+    }
     if (endPoint)
     {
-        endPoint->ForwardUp(packet, header, innerPort, incomingIntf);
+        endPoint->ForwardUp(packet, header, portInfo.dstPort, incomingIntf);
     }
     else
     {
@@ -152,7 +158,8 @@ UdpBasedL4Protocol::ForwardUp(Ptr<Packet> packet,
             return;
         }
         NS_LOG_WARN("No endPoints matched in UDP-based L4 protocol with inner port "
-                       << innerPort << " on node " << Simulator::GetContext()<<" on time "<<Simulator::Now());
+                    << portInfo.dstPort << " on node " << Simulator::GetContext()
+                    << " on time " << Simulator::Now());
     }
 }
 
@@ -283,6 +290,11 @@ InnerEndPointDemux::~InnerEndPointDemux()
         delete p.second;
     }
     m_endPoints.clear();
+    for (const auto& p : m_flowEndPoints)
+    {
+        delete p.second;
+    }
+    m_flowEndPoints.clear();
 }
 
 InnerEndPoint*
@@ -331,6 +343,22 @@ InnerEndPointDemux::Lookup(uint32_t innerPort)
     return nullptr;
 }
 
+InnerEndPoint*
+InnerEndPointDemux::Lookup(uint32_t innerPort, Ipv4Address srcAddr, uint32_t srcPort)
+{
+    FlowKey key{innerPort, srcAddr, srcPort};
+    auto it = m_flowEndPoints.find(key);
+    if (it != m_flowEndPoints.end())
+    {
+        InnerEndPoint* endPoint = it->second;
+        if (endPoint->IsRxEnabled())
+        {
+            return endPoint;
+        }
+    }
+    return nullptr;
+}
+
 bool
 InnerEndPointDemux::LookupPortLocal(uint32_t port)
 {
@@ -371,6 +399,33 @@ InnerEndPointDemux::AllocateEphemeralPort()
     } while (LookupPortLocal(port));
     m_ephemeral = port;
     return port;
+}
+
+InnerEndPoint*
+InnerEndPointDemux::AllocateForFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort)
+{
+    FlowKey key{dstPort, srcAddr, srcPort};
+    if (m_flowEndPoints.find(key) != m_flowEndPoints.end())
+    {
+        return m_flowEndPoints[key];
+    }
+    // Per-flow endpoint is keyed by dstQP + srcIP + srcQP so that packets of a single flow are
+    // steered to its dedicated socket instead of the listener.
+    InnerEndPoint* endPoint = new InnerEndPoint(dstPort, srcPort);
+    m_flowEndPoints.emplace(key, endPoint);
+    return endPoint;
+}
+
+void
+InnerEndPointDemux::DeAllocateFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort)
+{
+    FlowKey key{dstPort, srcAddr, srcPort};
+    auto it = m_flowEndPoints.find(key);
+    if (it != m_flowEndPoints.end())
+    {
+        delete it->second;
+        m_flowEndPoints.erase(it);
+    }
 }
 
 } // namespace ns3

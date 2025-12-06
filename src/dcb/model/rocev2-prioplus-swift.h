@@ -135,7 +135,7 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
         // No getter for simplicity
     };
 
-    std::shared_ptr<RoCEv2CongestionOps::Stats> GetStats() const;
+    std::shared_ptr<RoCEv2CongestionOps::Stats> GetStats() const override;
 
   private:
     /**

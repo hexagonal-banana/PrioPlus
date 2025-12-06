@@ -121,6 +121,21 @@ RoCEv2L4Protocol::GetDefaultServicePort() const
     return DEFAULT_DST_QP;
 }
 
+UdpBasedL4Protocol::InnerPortInfo
+RoCEv2L4Protocol::ParseInnerPorts(Ptr<Packet> packet,
+                                  Ipv4Header header,
+                                  uint16_t port,
+                                  Ptr<Ipv4Interface> incomingIntf)
+{
+    RoCEv2Header rocev2Header;
+    packet->PeekHeader(rocev2Header);
+    InnerPortInfo info{};
+    info.dstPort = rocev2Header.GetDestQP();
+    info.srcPort = rocev2Header.GetSrcQP();
+    info.srcAddr = header.GetSource();
+    return info;
+}
+
 uint32_t
 RoCEv2L4Protocol::DefaultServicePort()
 {
@@ -148,30 +163,30 @@ RoCEv2L4Protocol::Allocate(uint32_t srcPort, uint32_t dstPort)
     return m_innerEndPoints->Allocate(srcPort, dstPort);
 }
 
+InnerEndPoint*
+RoCEv2L4Protocol::AllocateFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort)
+{
+    NS_LOG_FUNCTION(this << dstPort << srcAddr << srcPort);
+    return m_innerEndPoints->AllocateForFlow(dstPort, srcAddr, srcPort);
+}
+
+InnerEndPoint*
+RoCEv2L4Protocol::LookupFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort)
+{
+    return m_innerEndPoints->Lookup(dstPort, srcAddr, srcPort);
+}
+
+void
+RoCEv2L4Protocol::DeAllocateFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort)
+{
+    m_innerEndPoints->DeAllocateFlow(dstPort, srcAddr, srcPort);
+}
+
 bool
 RoCEv2L4Protocol::CheckLocalPortExist(uint32_t localPort)
 {
     NS_LOG_FUNCTION(this << localPort);
     return m_innerEndPoints->LookupPortLocal(localPort);
-}
-
-uint32_t
-RoCEv2L4Protocol::ParseInnerPort(Ptr<Packet> packet,
-                                 Ipv4Header header,
-                                 uint16_t port,
-                                 Ptr<Ipv4Interface> incomingIntf)
-{
-    NS_LOG_FUNCTION(this << packet);
-    RoCEv2Header rocev2Header;
-    packet->PeekHeader(rocev2Header);
-    uint32_t dport = rocev2Header.GetDestQP();
-    // store QP in mapper for later use
-    if (m_qpMapper.find(dport) == m_qpMapper.end())
-    {
-        uint32_t sport = rocev2Header.GetSrcQP();
-        m_qpMapper.emplace(dport, sport);
-    }
-    return dport;
 }
 
 // void

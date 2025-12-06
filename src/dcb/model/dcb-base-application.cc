@@ -244,6 +244,9 @@ DcbBaseApplication::SetupReceiverSocket()
             roceSocket->ShutdownSend();
             // Set stop time to max to avoid receiver socket close
             roceSocket->SetStopTime(Time::Max());
+            // Listener socket receives all incoming packets and forwards them to the app via
+            // HandleRead.
+            roceSocket->SetListenerMode(MakeCallback(&DcbBaseApplication::HandleRead, this));
             roceSocket->SetRecvCallback(MakeCallback(&DcbBaseApplication::HandleRead, this));
         }
     }
@@ -430,6 +433,8 @@ DcbBaseApplication::CreateNewSocket(InetSocketAddress destAddr, uint32_t priorit
     // this),
     //                               MakeCallback (&DcbBaseApplication::ConnectionFailed,
     //                               this));
+    // Every per-flow socket delivers payloads back to the application through the same
+    // HandleRead callback.
     socket->SetRecvCallback(MakeCallback(&DcbBaseApplication::HandleRead, this));
 
     return socket;

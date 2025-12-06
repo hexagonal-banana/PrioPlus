@@ -38,7 +38,8 @@
 #include "ns3/string.h"
 
 #include <assert.h>
-#include <fstream>
+#include <map>
+#include <memory>
 #include <tuple>
 
 namespace ns3
@@ -105,6 +106,7 @@ RoCEv2Socket::RoCEv2Socket()
       m_txBuffer(DcbTxBuffer(MakeCallback(&RoCEv2Socket::SendPendingPacket, this),
                              MakeCallback(&RoCEv2Socket::CreateNextProtocolHeader, this))),
       m_senderNextPSN(0),
+      m_isListener(false),
       m_psnEnd(0),
       m_waitingForSchedule(false),
       m_lastRto(Time(0)),
@@ -337,6 +339,12 @@ RoCEv2Socket::ForwardUp(Ptr<Packet> packet,
     RoCEv2Header rocev2Header;
     packet->RemoveHeader(rocev2Header);
 
+    if (m_isListener)
+    {
+        HandleAsListener(packet, header, port, incomingInterface, rocev2Header);
+        return;
+    }
+
     m_sockState->m_receivedEcn = header.GetEcn() == Ipv4Header::EcnType::ECN_CE;
 
     // If the packet has ProbePacketTag, it is a probe packet or a probe ack packet of
@@ -447,123 +455,75 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
 {
     NS_LOG_FUNCTION(this << packet);
 
-    const uint32_t srcQP = roce.GetSrcQP(), dstQP = roce.GetDestQP();
-    Ipv4Address srcIp = header.GetSource();
-    FlowIdentifier flowId = FlowIdentifier{std::move(srcIp), srcQP};
-    std::map<FlowIdentifier, FlowInfo>::iterator flowInfoIter = m_receiverFlowInfo.find(flowId);
-    // TODO: fork the socket instead of using one as the receiver, i.e., m_receiverFlowInfo should
-    // be removed.
-    if (flowInfoIter == m_receiverFlowInfo.end())
-    {
-        // Get the congestion type from CongestionTypeTag in the packet
-        CongestionTypeTag ctTag;
-        packet->PeekPacketTag(ctTag);
-        ObjectFactory congestionAlgorithmFactory;
-        congestionAlgorithmFactory.SetTypeId(ctTag.GetCongestionTypeId());
-        Ptr<RoCEv2CongestionOps> algo = congestionAlgorithmFactory.Create<RoCEv2CongestionOps>();
+    Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(packet);
+    InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
 
-        auto pp = m_receiverFlowInfo.emplace(
-            std::move(flowId),
-            FlowInfo{dstQP,
-                     DcbRxBuffer{MakeCallback(&RoCEv2Socket::DoForwardUp, this),
-                                 incomingInterface,
-                                 m_retxMode},
-                     algo});
-        flowInfoIter = std::move(pp.first);
-        // TODO: erase flowInfo after flow finishes
-    }
-
-    // Check ECN
     if (m_sockState->m_receivedEcn) // ECN congestion encountered
     {
-        flowInfoIter->second.receivedECN = true;
-        ScheduleNextCNP(flowInfoIter, header);
+        m_rxState.receivedECN = true;
+        ScheduleNextCNP(header);
     }
 
     // Check PSN
     const uint32_t psn = roce.GetPSN();
     // Get the expected PSN of the flow should be before the packet is added to the buffer
-    uint32_t expectedPSN = flowInfoIter->second.GetExpectedPsn();
-    flowInfoIter->second.m_rxBuffer.Add(psn, header, roce, packet);
-
-    // Debug utility, ugly but useful, please do not remove it
-    // if (psn >= 2646)
-    // {
-    //     NS_LOG_DEBUG("Break point");
-    // }
-    // NS_LOG_DEBUG("Receive packet " << psn << " at " << Simulator::Now().GetNanoSeconds() <<
-    // "ns.");
+    uint32_t expectedPSN = m_rxState.rxBuffer->GetExpectedPsn();
+    m_rxState.rxBuffer->Add(psn, header, roce, packet);
 
     uint32_t ackHeaderSize =
-        m_innerProto->GetHeaderSize() + 4 +
-        flowInfoIter->second.m_ccOps->GetExtraAckSize(); // 4 bytes for AETHeader
-    // If ack packet is smaller than 64B, use payload to pad it
+        m_innerProto->GetHeaderSize() + 4 + m_rxState.ccOps->GetExtraAckSize(); // 4 bytes for AET
     uint32_t ackPayloadSize = ackHeaderSize < 64 ? 64 - ackHeaderSize : 0;
 
     if (psn <= expectedPSN)
     {
-        // FIXME < is for the case of ack has been lost
-        // The packet is in order
-        // flowInfoIter->second.nextPSN = (expectedPSN + 1) & 0xffffff;
-        flowInfoIter->second.m_ePsnAdvancedAfterNack = true;
+        m_rxState.ePsnAdvancedAfterNack = true;
 
         if (roce.GetAckQ())
         { // send ACK
-            // TODO No check of whether queue disc avaliable, as don't know how to hold the ACK
-            // packet at l4
-            Ptr<Packet> ack = RoCEv2L4Protocol::GenerateACK(dstQP,
-                                                            srcQP,
-                                                            flowInfoIter->second.GetExpectedPsn(),
+            Ptr<Packet> ack = RoCEv2L4Protocol::GenerateACK(m_rxState.dstQP,
+                                                            m_rxState.srcQP,
+                                                            m_rxState.rxBuffer->GetExpectedPsn(),
                                                             ackPayloadSize);
             SocketIpTosTag tosTag;
             uint8_t dataPktTos = header.GetTos();
             uint8_t ackTos = std::max((GetIpTos() & 0xfc), (dataPktTos & 0xfc));
             if (m_sockState->m_receivedEcn)
             {
-                // Add ECN to the ACK packet
                 ackTos = (ackTos & 0xfc) | Ipv4Header::EcnType::ECN_CE;
             }
             tosTag.SetTos(ackTos);
             ack->AddPacketTag(tosTag);
 
-            flowInfoIter->second.m_ccOps->UpdateStateWithGenACK(packet, ack);
-            m_innerProto->Send(ack, header.GetDestination(), header.GetSource(), dstQP, srcQP, 0);
+            m_rxState.ccOps->UpdateStateWithGenACK(packet, ack);
+            m_innerProto->Send(ack,
+                               header.GetDestination(),
+                               header.GetSource(),
+                               m_rxState.dstQP,
+                               m_rxState.srcQP,
+                               0);
         }
-        // NS_LOG_DEBUG("Send ACK with PSN " << flowInfoIter->second.GetExpectedPsn() << " at time "
-        //                                   << Simulator::Now().GetNanoSeconds() << "ns.");
     }
-    else if (psn > expectedPSN)
+    else
     {
-        // NS_LOG_LOGIC("RoCEv2 receiver " << Simulator::GetContext() << "send NACK of flow " <<
-        // srcQP
-        //                                 << "->" << dstQP);
-        if (m_retxMode == RoCEv2RetxMode::GBN &&
-            flowInfoIter->second.m_ePsnAdvancedAfterNack == false)
+        if (m_retxMode == RoCEv2RetxMode::GBN && m_rxState.ePsnAdvancedAfterNack == false)
         {
             // already send nack for this epsn
             return;
         }
-        else if (m_retxMode == RoCEv2RetxMode::GBN && flowInfoIter->second.m_ePsnAdvancedAfterNack)
+        else if (m_retxMode == RoCEv2RetxMode::GBN && m_rxState.ePsnAdvancedAfterNack)
         {
-            // packet out-of-order and have not send NACK for this epsn, send NACK
-            flowInfoIter->second.m_ePsnAdvancedAfterNack = false;
+            m_rxState.ePsnAdvancedAfterNack = false;
         }
 
-        // TODO No check of whether queue disc avaliable, as don't know how to hold the NACK packet
-        // at l4
-
-        Ptr<Packet> nack = RoCEv2L4Protocol::GenerateNACK(dstQP,
-                                                          srcQP,
-                                                          flowInfoIter->second.GetExpectedPsn(),
+        Ptr<Packet> nack = RoCEv2L4Protocol::GenerateNACK(m_rxState.dstQP,
+                                                          m_rxState.srcQP,
+                                                          m_rxState.rxBuffer->GetExpectedPsn(),
                                                           ackPayloadSize);
 
         if (m_retxMode == RoCEv2RetxMode::IRN)
         {
-            // If the receiver is in IRN mode, add a IRN header with the received packet's PSN
             IrnHeader irnH;
             irnH.SetAckedPsn(psn);
-            // The IRN header should be placed after the RoCEv2 and AETH header
-            // TODO So ugly, codesign it later with Feiyang's INT header placement
             RoCEv2Header rocev2Header;
             AETHeader aeth;
             nack->RemoveHeader(rocev2Header);
@@ -573,13 +533,109 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
             nack->AddHeader(rocev2Header);
         }
 
-        m_innerProto
-            ->Send(nack, header.GetDestination(), header.GetSource(), dstQP, srcQP, nullptr);
+        m_innerProto->Send(
+            nack, header.GetDestination(), header.GetSource(), m_rxState.dstQP, m_rxState.srcQP, nullptr);
+    }
+}
+
+Ptr<RoCEv2CongestionOps>
+RoCEv2Socket::CreateCcOpsFromTag(Ptr<Packet> packet)
+{
+    CongestionTypeTag ctTag;
+    if (!packet->PeekPacketTag(ctTag))
+    {
+        ObjectFactory factory;
+        factory.SetTypeId(m_congTypeId);
+        return factory.Create<RoCEv2CongestionOps>();
+    }
+    ObjectFactory congestionAlgorithmFactory;
+    congestionAlgorithmFactory.SetTypeId(ctTag.GetCongestionTypeId());
+    return congestionAlgorithmFactory.Create<RoCEv2CongestionOps>();
+}
+
+void
+RoCEv2Socket::InitRxStateIfNeeded(const RoCEv2Header& roce,
+                                  const Ipv4Header& header,
+                                  Ptr<Ipv4Interface> incomingInterface,
+                                  Ptr<RoCEv2CongestionOps> ccOps)
+{
+    if (m_rxState.rxBuffer != nullptr)
+    {
+        return;
+    }
+    m_rxState.dstQP = roce.GetDestQP();
+    m_rxState.srcQP = roce.GetSrcQP();
+    m_rxState.srcAddr = header.GetSource();
+    m_rxState.ccOps = ccOps;
+    m_rxState.incomingInterface = incomingInterface;
+    m_rxState.ePsnAdvancedAfterNack = false;
+    m_rxState.receivedECN = false;
+    m_rxState.rxBuffer = std::make_unique<DcbRxBuffer>(MakeCallback(&RoCEv2Socket::DoForwardUp, this),
+                                                       incomingInterface,
+                                                       m_retxMode);
+}
+
+void
+RoCEv2Socket::HandleAsListener(Ptr<Packet> packet,
+                               Ipv4Header header,
+                               uint32_t port,
+                               Ptr<Ipv4Interface> incomingInterface,
+                               const RoCEv2Header& roce)
+{
+    RxFlowKey key{header.GetSource(), roce.GetSrcQP(), roce.GetDestQP()};
+    Ptr<RoCEv2Socket> flowSocket;
+    auto it = m_childRxSockets.find(key);
+    if (it != m_childRxSockets.end())
+    {
+        flowSocket = it->second;
+    }
+    else
+    {
+        flowSocket = CreateReceiverSocketForFlow(roce, header, incomingInterface, packet);
+        if (flowSocket == nullptr)
+        {
+            NS_LOG_WARN("Failed to create receiver socket for incoming flow.");
+            return;
+        }
+        m_childRxSockets.emplace(key, flowSocket);
     }
 
-    // Zhaochen: The ForwardUp should hand over the src port, not the dst port
-    // The L4 layer has been written wrongly. We pass the src port to the L4 layer in this function
-    // UdpBasedSocket::ForwardUp(packet, header, srcQP, incomingInterface);
+    Ptr<Packet> pktCopy = packet->Copy();
+    pktCopy->AddHeader(roce);
+    flowSocket->ForwardUp(pktCopy, header, port, incomingInterface);
+}
+
+Ptr<RoCEv2Socket>
+RoCEv2Socket::CreateReceiverSocketForFlow(const RoCEv2Header& roce,
+                                          const Ipv4Header& header,
+                                          Ptr<Ipv4Interface> incomingInterface,
+                                          Ptr<Packet> originalPacket)
+{
+    NS_LOG_FUNCTION(this);
+    Ptr<RoCEv2L4Protocol> l4 = DynamicCast<RoCEv2L4Protocol>(m_innerProto);
+    if (l4 == nullptr)
+    {
+        NS_FATAL_ERROR("RoCEv2Socket listener cannot find RoCEv2L4Protocol.");
+    }
+
+    // Avoid duplicate registration if flow already exists in L4 demux
+    if (l4->LookupFlow(roce.GetDestQP(), header.GetSource(), roce.GetSrcQP()) != nullptr)
+    {
+        return nullptr;
+    }
+
+    Ptr<RoCEv2Socket> sock = DynamicCast<RoCEv2Socket>(l4->CreateSocket());
+    NS_ASSERT(sock != nullptr);
+    sock->BindToNetDevice(m_boundnetdevice);
+    sock->BindToFlow(roce.GetDestQP(), header.GetSource(), roce.GetSrcQP());
+    sock->SetIpTos(GetIpTos());
+    if (!m_listenerRecvCb.IsNull())
+    {
+        sock->SetRecvCallback(m_listenerRecvCb);
+    }
+    Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(originalPacket);
+    sock->InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
+    return sock;
 }
 
 void
@@ -631,33 +687,24 @@ RoCEv2Socket::IrnReactToNack(uint32_t expectedPsn, IrnHeader irnH)
 // }
 
 void
-RoCEv2Socket::ScheduleNextCNP(std::map<FlowIdentifier, FlowInfo>::iterator flowInfoIter,
-                              Ipv4Header header)
+RoCEv2Socket::ScheduleNextCNP(Ipv4Header header)
 {
     NS_LOG_FUNCTION(this);
 
-    RoCEv2Socket::FlowInfo& flowInfo = flowInfoIter->second;
-    // If there is already a CNP event running, or the receiver has not received ECN, do not send
-    if (flowInfo.lastCNPEvent.IsRunning() || !flowInfo.receivedECN)
+    if (m_rxState.lastCNPEvent.IsRunning() || !m_rxState.receivedECN)
     {
         return;
     }
-    auto [srcIp, srcQP] = flowInfoIter->first;
 
-    // send Congestion Notification Packet (CNP) to sender
     CheckControlQueueDiscAvaliable();
-    Ptr<Packet> cnp = RoCEv2L4Protocol::GenerateCNP(flowInfo.dstQP, srcQP);
+    Ptr<Packet> cnp = RoCEv2L4Protocol::GenerateCNP(m_rxState.dstQP, m_rxState.srcQP);
     m_innerProto
-        ->Send(cnp, header.GetDestination(), header.GetSource(), flowInfo.dstQP, srcQP, nullptr);
-    flowInfo.receivedECN = false;
-    flowInfo.lastCNPEvent = Simulator::Schedule(GetCNPInterval(),
-                                                &RoCEv2Socket::ScheduleNextCNP,
-                                                this,
-                                                flowInfoIter,
-                                                header);
-
-    // NS_LOG_DEBUG("DCQCN: Receiver send CNP to " << srcIp << " qp " << srcQP << " at time "
-    //                                             << Simulator::Now().GetMicroSeconds());
+        ->Send(cnp, header.GetDestination(), header.GetSource(), m_rxState.dstQP, m_rxState.srcQP, nullptr);
+    m_rxState.receivedECN = false;
+    m_rxState.lastCNPEvent = Simulator::Schedule(GetCNPInterval(),
+                                                 &RoCEv2Socket::ScheduleNextCNP,
+                                                 this,
+                                                 header);
 }
 
 int
@@ -729,6 +776,26 @@ void
 RoCEv2Socket::SetStopTime(Time stopTime)
 {
     m_ccOps->SetStopTime(stopTime);
+}
+
+void
+RoCEv2Socket::SetListenerMode(Callback<void, Ptr<Socket>> recvCb)
+{
+    m_isListener = true;
+    m_listenerRecvCb = recvCb;
+}
+
+int
+RoCEv2Socket::BindToFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort)
+{
+    NS_LOG_FUNCTION(this << dstPort << srcAddr << srcPort);
+    NS_ASSERT_MSG(m_innerProto, "Inner protocol should be set before BindToFlow");
+    Ptr<RoCEv2L4Protocol> inner = DynamicCast<RoCEv2L4Protocol>(m_innerProto);
+    NS_ASSERT(inner != nullptr);
+    m_endPoint = inner->AllocateFlow(dstPort, srcAddr, srcPort);
+    m_endPoint->SetRxCallback(MakeCallback(&RoCEv2Socket::ForwardUp, this));
+    m_endPoint->SetPeerPort(srcPort);
+    return 0;
 }
 
 void

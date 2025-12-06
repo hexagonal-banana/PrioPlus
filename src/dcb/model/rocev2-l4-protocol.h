@@ -63,6 +63,13 @@ class RoCEv2L4Protocol : public UdpBasedL4Protocol
     static uint32_t DefaultServicePort();
 
     virtual Ptr<Socket> CreateSocket() override;
+    /**
+     * \brief Parse RoCEv2 header to extract dstQP/srcQP/srcIP.
+     */
+    virtual InnerPortInfo ParseInnerPorts(Ptr<Packet> packet,
+                                          Ipv4Header header,
+                                          uint16_t port,
+                                          Ptr<Ipv4Interface> incomingIntf) override;
 
     static Ptr<Packet> GenerateCNP(uint32_t srcQP, uint32_t dstQP);
     static Ptr<Packet> GenerateACK(uint32_t srcQP,
@@ -80,10 +87,18 @@ class RoCEv2L4Protocol : public UdpBasedL4Protocol
      * \brief Get the dst QP from RoCEv2 header.
      * \return The dst QP number.
      */
-    virtual uint32_t ParseInnerPort(Ptr<Packet> packet,
-                                    Ipv4Header header,
-                                    uint16_t port,
-                                    Ptr<Ipv4Interface> incomingIntf) override;
+    /**
+     * \brief Allocate per-flow endpoint (dstQP, srcIP, srcQP).
+     */
+    InnerEndPoint* AllocateFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort);
+    /**
+     * \brief Lookup per-flow endpoint (dstQP, srcIP, srcQP).
+     */
+    InnerEndPoint* LookupFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort);
+    /**
+     * \brief Remove per-flow endpoint (dstQP, srcIP, srcQP).
+     */
+    void DeAllocateFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort);
 
     // protected:
     // void ServerReceive (Ptr<Packet> packet, Ipv4Header header, uint32_t port,

@@ -30,6 +30,9 @@
 #include "ns3/rocev2-header.h"
 #include "ns3/traced-callback.h"
 
+#include <map>
+#include <memory>
+
 namespace ns3
 {
 
@@ -528,6 +531,18 @@ class RoCEv2Socket : public UdpBasedSocket
      * \brief Terminate the socket sending. That is, stop the socket from sending new packet.
      */
     void Terminate();
+    /**
+     * \brief Enable listener mode and set recv callback for flow sockets.
+     */
+    void SetListenerMode(Callback<void, Ptr<Socket>> recvCb);
+    bool IsListener() const
+    {
+        return m_isListener;
+    }
+    /**
+     * \brief Bind a receive socket to a specific flow (dstQP, srcIP, srcQP).
+     */
+    int BindToFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort);
 
     // \brief Structure that keeps the RoCEv2Socket statistics
     class Stats
@@ -632,38 +647,37 @@ class RoCEv2Socket : public UdpBasedSocket
     void Finish();
 
   private:
-    struct FlowInfo // for receiver
+    struct RxFlowKey
     {
+        Ipv4Address srcAddr;
+        uint32_t srcQP;
         uint32_t dstQP;
-        uint32_t nextPSN;
-        bool receivedECN;
-        EventId lastCNPEvent;
-        DcbRxBuffer m_rxBuffer;
-        Ptr<RoCEv2CongestionOps> m_ccOps;
-        /**
-         * In RoCE, receiver will only generate one NACK for a expected PSN. Thus we use a bool to
-         * record whether the expected PSN advanced after a NACK. If true, it is permitted to send a
-         * new NACK.
-         */
-        bool m_ePsnAdvancedAfterNack; // Whether the expected PSN advanced after a NACK
-
-        FlowInfo(uint32_t dst, DcbRxBuffer rxBuffer, Ptr<RoCEv2CongestionOps> ccOps)
-            : dstQP(dst),
-              nextPSN(0),
-              receivedECN(false),
-              m_rxBuffer(rxBuffer),
-              m_ccOps(ccOps),
-              m_ePsnAdvancedAfterNack(false)
+        bool operator<(const RxFlowKey& other) const
         {
-        }
-
-        uint32_t GetExpectedPsn() const
-        {
-            return m_rxBuffer.GetExpectedPsn();
+            if (srcAddr != other.srcAddr)
+            {
+                return srcAddr < other.srcAddr;
+            }
+            if (srcQP != other.srcQP)
+            {
+                return srcQP < other.srcQP;
+            }
+            return dstQP < other.dstQP;
         }
     };
 
-    typedef std::pair<Ipv4Address, uint32_t> FlowIdentifier;
+    struct RxState
+    {
+        uint32_t dstQP{0};
+        uint32_t srcQP{0};
+        Ipv4Address srcAddr;
+        bool receivedECN{false};
+        EventId lastCNPEvent;
+        std::unique_ptr<DcbRxBuffer> rxBuffer;
+        Ptr<RoCEv2CongestionOps> ccOps;
+        bool ePsnAdvancedAfterNack{false};
+        Ptr<Ipv4Interface> incomingInterface;
+    };
 
     RoCEv2Header CreateNextProtocolHeader();
     void HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce);
@@ -672,6 +686,32 @@ class RoCEv2Socket : public UdpBasedSocket
                           uint32_t port,
                           Ptr<Ipv4Interface> incomingInterface,
                           const RoCEv2Header& roce);
+    /**
+     * \brief Listener entry: dispatch first/early packets to per-flow sockets.
+     */
+    void HandleAsListener(Ptr<Packet> packet,
+                          Ipv4Header header,
+                          uint32_t port,
+                          Ptr<Ipv4Interface> incomingInterface,
+                          const RoCEv2Header& roce);
+    /**
+     * \brief Create a per-flow receive socket and bind it.
+     */
+    Ptr<RoCEv2Socket> CreateReceiverSocketForFlow(const RoCEv2Header& roce,
+                                                  const Ipv4Header& header,
+                                                  Ptr<Ipv4Interface> incomingInterface,
+                                                  Ptr<Packet> originalPacket);
+    /**
+     * \brief Initialize RX state (ccOps/rxBuffer/ids) lazily on first packet.
+     */
+    void InitRxStateIfNeeded(const RoCEv2Header& roce,
+                             const Ipv4Header& header,
+                             Ptr<Ipv4Interface> incomingInterface,
+                             Ptr<RoCEv2CongestionOps> ccOps);
+    /**
+     * \brief Build congestion control ops from CongestionTypeTag; fallback to socket default.
+     */
+    Ptr<RoCEv2CongestionOps> CreateCcOpsFromTag(Ptr<Packet> packet);
 
     void GoBackN(uint32_t lostPSN);
     /**
@@ -683,8 +723,10 @@ class RoCEv2Socket : public UdpBasedSocket
      */
     void IrnReactToNack(uint32_t expectedPSN, IrnHeader irnH);
 
-    void ScheduleNextCNP(std::map<FlowIdentifier, FlowInfo>::iterator flowInfoIter,
-                         Ipv4Header header);
+    /**
+     * \brief Schedule/send CNP for current flow when ECN observed.
+     */
+    void ScheduleNextCNP(Ipv4Header header);
     /**
      * \brief Check whether the given priority queue disc avaliable to buffer more packet.
      *
@@ -731,7 +773,10 @@ class RoCEv2Socket : public UdpBasedSocket
     uint32_t m_senderNextPSN; //!< Note that it is not the PSN of the next
                               //!< packet to be sent by socket, which is the top of
                               //!< m_txBuffer.m_txQueue.
-    std::map<FlowIdentifier, FlowInfo> m_receiverFlowInfo;
+    RxState m_rxState;
+    bool m_isListener;
+    Callback<void, Ptr<Socket>> m_listenerRecvCb;
+    std::map<RxFlowKey, Ptr<RoCEv2Socket>> m_childRxSockets;
     uint32_t m_psnEnd; //!< the last PSN + 1, used to check if flow completes
 
     Time m_CNPInterval; //!< Interval to send CNP
