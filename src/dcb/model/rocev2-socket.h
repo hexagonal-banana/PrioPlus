@@ -30,6 +30,11 @@
 #include "ns3/rocev2-header.h"
 #include "ns3/traced-callback.h"
 
+#include <functional>
+#include <map>
+#include <memory>
+#include <vector>
+
 namespace ns3
 {
 
@@ -40,7 +45,14 @@ class IrnHeader;
 enum RoCEv2RetxMode : uint8_t
 {
     GBN, // Go Back N
-    IRN  // Improved RoCE NIC, see Revisiting Network Support for RDMA by Mittal et al.
+    IRN, // Improved RoCE NIC, see Revisiting Network Support for RDMA by Mittal et al.
+    NONE // No retransmission, for packet spraying only.
+};
+
+enum RoCEv2AckMode : uint8_t
+{
+    SENDER_DRIVEN, // Sender-driven ACK, Receiver is expected to ack every packet it receives.
+    RECEIVER_DRIVEN, // Receiver-driven ACK, Receiver will decide when to ack.
 };
 
 class DcbTxBuffer : public Object
@@ -223,6 +235,18 @@ class DcbTxBuffer : public Object
      * \brief Clear all psn >= given psn in the txQueue. Used to terminate the socket.
      */
     void ClearTxQueue(uint32_t psn);
+    /**
+     * \brief Set the end PSN (last PSN + 1) of the current flow.
+     */
+    void SetEndPsn(uint32_t endPsn);
+    /**
+     * \brief Get the end PSN (last PSN + 1) of the current flow.
+     */
+    uint32_t GetEndPsn() const;
+    /**
+     * \brief Whether all packets have been acknowledged.
+     */
+    bool IsSendFinish() const;
 
   protected:
     /**
@@ -247,13 +271,13 @@ class DcbTxBuffer : public Object
 
     std::deque<DcbTxBufferItem> m_buffer;
     uint32_t m_frontPsn;     // PSN of the front item in the buffer. Only increase when acked.
-    uint32_t m_prevFrontPsn; // previous FrontPsn.
     std::priority_queue<uint32_t, std::vector<uint32_t>, std::greater<>>
         m_txQueue;             // PSN of the items to be sent
     std::vector<bool> m_acked; // Whether the packet with the PSN is acked, serve as a bitmap in
                                // retx mode IRN. The index is the PSN.
     std::vector<uint8_t> m_pktState; // the state of a packet(ack, unack, lost, undef)
     uint32_t m_maxAckedPsn;          // The max PSN which has been acknowledged, used to detect gap.
+    uint32_t m_endPsn;               // The last PSN + 1, used to check if flow completes.
 
     uint32_t m_remainSize;  // The size of data to be sent
     uint32_t m_maxSentPsn;  // The max PSN has been sent
@@ -528,6 +552,20 @@ class RoCEv2Socket : public UdpBasedSocket
      * \brief Terminate the socket sending. That is, stop the socket from sending new packet.
      */
     void Terminate();
+    /**
+     * \brief Enable listener mode and set recv callback for flow sockets.
+     */
+    void SetListenerMode(Callback<void, Ptr<Socket>> recvCb);
+
+    bool IsListener() const
+    {
+        return m_isListener;
+    }
+
+    /**
+     * \brief Bind a receive socket to a specific flow (dstQP, srcIP, srcQP).
+     */
+    int BindToFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort);
 
     // \brief Structure that keeps the RoCEv2Socket statistics
     class Stats
@@ -632,38 +670,38 @@ class RoCEv2Socket : public UdpBasedSocket
     void Finish();
 
   private:
-    struct FlowInfo // for receiver
+    struct RxFlowKey
     {
+        Ipv4Address srcAddr;
+        uint32_t srcQP;
         uint32_t dstQP;
-        uint32_t nextPSN;
-        bool receivedECN;
-        EventId lastCNPEvent;
-        DcbRxBuffer m_rxBuffer;
-        Ptr<RoCEv2CongestionOps> m_ccOps;
-        /**
-         * In RoCE, receiver will only generate one NACK for a expected PSN. Thus we use a bool to
-         * record whether the expected PSN advanced after a NACK. If true, it is permitted to send a
-         * new NACK.
-         */
-        bool m_ePsnAdvancedAfterNack; // Whether the expected PSN advanced after a NACK
 
-        FlowInfo(uint32_t dst, DcbRxBuffer rxBuffer, Ptr<RoCEv2CongestionOps> ccOps)
-            : dstQP(dst),
-              nextPSN(0),
-              receivedECN(false),
-              m_rxBuffer(rxBuffer),
-              m_ccOps(ccOps),
-              m_ePsnAdvancedAfterNack(false)
+        bool operator<(const RxFlowKey& other) const
         {
-        }
-
-        uint32_t GetExpectedPsn() const
-        {
-            return m_rxBuffer.GetExpectedPsn();
+            if (srcAddr != other.srcAddr)
+            {
+                return srcAddr < other.srcAddr;
+            }
+            if (srcQP != other.srcQP)
+            {
+                return srcQP < other.srcQP;
+            }
+            return dstQP < other.dstQP;
         }
     };
 
-    typedef std::pair<Ipv4Address, uint32_t> FlowIdentifier;
+    struct RxState
+    {
+        uint32_t dstQP{0};
+        uint32_t srcQP{0};
+        Ipv4Address srcAddr;
+        bool receivedECN{false};
+        EventId lastCNPEvent;
+        std::unique_ptr<DcbRxBuffer> rxBuffer;
+        Ptr<RoCEv2CongestionOps> ccOps;
+        bool ePsnAdvancedAfterNack{false};
+        Ptr<Ipv4Interface> incomingInterface;
+    };
 
     RoCEv2Header CreateNextProtocolHeader();
     void HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce);
@@ -672,6 +710,32 @@ class RoCEv2Socket : public UdpBasedSocket
                           uint32_t port,
                           Ptr<Ipv4Interface> incomingInterface,
                           const RoCEv2Header& roce);
+    /**
+     * \brief Listener entry: dispatch first/early packets to per-flow sockets.
+     */
+    void HandleAsListener(Ptr<Packet> packet,
+                          Ipv4Header header,
+                          uint32_t port,
+                          Ptr<Ipv4Interface> incomingInterface,
+                          const RoCEv2Header& roce);
+    /**
+     * \brief Create a per-flow receive socket and bind it.
+     */
+    Ptr<RoCEv2Socket> CreateReceiverSocketForFlow(const RoCEv2Header& roce,
+                                                  const Ipv4Header& header,
+                                                  Ptr<Ipv4Interface> incomingInterface,
+                                                  Ptr<Packet> originalPacket);
+    /**
+     * \brief Initialize RX state (ccOps/rxBuffer/ids) lazily on first packet.
+     */
+    void InitRxStateIfNeeded(const RoCEv2Header& roce,
+                             const Ipv4Header& header,
+                             Ptr<Ipv4Interface> incomingInterface,
+                             Ptr<RoCEv2CongestionOps> ccOps);
+    /**
+     * \brief Build congestion control ops from CongestionTypeTag; fallback to socket default.
+     */
+    Ptr<RoCEv2CongestionOps> CreateCcOpsFromTag(Ptr<Packet> packet);
 
     void GoBackN(uint32_t lostPSN);
     /**
@@ -683,8 +747,10 @@ class RoCEv2Socket : public UdpBasedSocket
      */
     void IrnReactToNack(uint32_t expectedPSN, IrnHeader irnH);
 
-    void ScheduleNextCNP(std::map<FlowIdentifier, FlowInfo>::iterator flowInfoIter,
-                         Ipv4Header header);
+    /**
+     * \brief Schedule/send CNP for current flow when ECN observed.
+     */
+    void ScheduleNextCNP(Ipv4Header header);
     /**
      * \brief Check whether the given priority queue disc avaliable to buffer more packet.
      *
@@ -731,13 +797,16 @@ class RoCEv2Socket : public UdpBasedSocket
     uint32_t m_senderNextPSN; //!< Note that it is not the PSN of the next
                               //!< packet to be sent by socket, which is the top of
                               //!< m_txBuffer.m_txQueue.
-    std::map<FlowIdentifier, FlowInfo> m_receiverFlowInfo;
-    uint32_t m_psnEnd; //!< the last PSN + 1, used to check if flow completes
+    RxState m_rxState;
+    bool m_isListener;
+    Callback<void, Ptr<Socket>> m_listenerRecvCb;
+    std::map<RxFlowKey, Ptr<RoCEv2Socket>> m_childRxSockets;
 
     Time m_CNPInterval; //!< Interval to send CNP
     Time m_flowStartTime;
 
     RoCEv2RetxMode m_retxMode;
+    RoCEv2AckMode m_ackMode;
 
     uint32_t m_innerPrio; //!< The inner priority of the sockets when contenting with other sockets
 
@@ -745,11 +814,15 @@ class RoCEv2Socket : public UdpBasedSocket
 
     /***** Utility for Probe (Like DOCA's RTT Req) *****/
     /**
-     * \brief Send a probe packet, now only used in PrioPlus.
+     * \brief Send an outband packet (e.g., probe/credit request).
      *
+     * \param psn The PSN to be carried in the packet.
+     * \param packetTags Packet tags to attach before sending.
      * \return If the packet is sent, return true, otherwise return false.
      */
-    bool SendProbePacket(uint32_t psn);
+    bool SendOutbandPkt(uint32_t psn,
+                        bool isDataPkt,
+                        const std::vector<std::reference_wrapper<const Tag>>& packetTags);
     /**
      * \brief Handle the probe packet, now only used in PrioPlus.
      *
@@ -857,6 +930,28 @@ class ProbePacketTag : public Tag
   private:
     bool m_isProbe; //!< if true, the packet is a probe packet, otherwise, it is a ACK of probe
                     //!< packet
+};
+
+class CreditRequestTag : public Tag
+{
+  public:
+    static TypeId GetTypeId();
+    TypeId GetInstanceTypeId() const override;
+    uint32_t GetSerializedSize() const override;
+    void Serialize(TagBuffer buf) const override;
+    void Deserialize(TagBuffer buf) override;
+    void Print(std::ostream& os) const override;
+
+    CreditRequestTag();
+    explicit CreditRequestTag(bool isRequest);
+
+    inline bool IsRequest() const
+    {
+        return m_isRequest;
+    }
+
+  private:
+    bool m_isRequest{false};
 };
 
 } // namespace ns3

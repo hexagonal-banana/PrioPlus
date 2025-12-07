@@ -49,6 +49,12 @@ class InnerEndPointDemux;
 class UdpBasedL4Protocol : public Object
 {
   public:
+    struct InnerPortInfo
+    {
+        uint32_t dstPort;
+        uint32_t srcPort;
+        Ipv4Address srcAddr;
+    };
     /**
      * \brief Get the type ID.
      * \return the object TypeId
@@ -103,10 +109,15 @@ class UdpBasedL4Protocol : public Object
 
     Ipv4Address GetLocalAddress() const;
 
-    virtual uint32_t ParseInnerPort(Ptr<Packet> packet,
-                                    Ipv4Header header,
-                                    uint16_t port,
-                                    Ptr<Ipv4Interface> incomingIntf) = 0;
+    /**
+     * \brief Parse inner header to obtain demux keys.
+     *
+     * Must fill dstPort (dest QP), srcPort (src QP) and srcAddr (src IP).
+     */
+    virtual InnerPortInfo ParseInnerPorts(Ptr<Packet> packet,
+                                          Ipv4Header header,
+                                          uint16_t port,
+                                          Ptr<Ipv4Interface> incomingIntf) = 0;
 
   protected:
     virtual void DoDispose(void) override;
@@ -204,7 +215,14 @@ class InnerEndPointDemux
     InnerEndPoint* Allocate(uint32_t sport, uint32_t dport);
     void DeAllocate(InnerEndPoint* endPoint);
 
+    /**
+     * \brief Lookup endpoint by dstQP.
+     */
     InnerEndPoint* Lookup(uint32_t innerPort);
+    /**
+     * \brief Lookup endpoint by (dstQP, srcIP, srcQP).
+     */
+    InnerEndPoint* Lookup(uint32_t innerPort, Ipv4Address srcAddr, uint32_t srcPort);
 
     /**
      * \brief Lookup for port local.
@@ -219,8 +237,41 @@ class InnerEndPointDemux
      */
     uint32_t AllocateEphemeralPort(void);
 
+    /**
+     * \brief Allocate a per-flow endpoint keyed by (dstQP, srcIP, srcQP).
+     */
+    InnerEndPoint* AllocateForFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort);
+    /**
+     * \brief Remove a per-flow endpoint keyed by (dstQP, srcIP, srcQP).
+     */
+    void DeAllocateFlow(uint32_t dstPort, Ipv4Address srcAddr, uint32_t srcPort);
+
   private:
+    struct FlowKey
+    {
+        uint32_t dstPort;
+        Ipv4Address srcAddr;
+        uint32_t srcPort;
+        bool operator<(const FlowKey& other) const
+        {
+            if (dstPort != other.dstPort)
+            {
+                return dstPort < other.dstPort;
+            }
+            if (srcAddr != other.srcAddr)
+            {
+                return srcAddr < other.srcAddr;
+            }
+            return srcPort < other.srcPort;
+        }
+    };
+
+    // m_endPoints: classic demux keyed only by inner dst port (QP). Used for listener sockets and
+    // protocols that do not need per-flow sockets.
     std::map<uint32_t, InnerEndPoint*> m_endPoints;
+    // m_flowEndPoints: fine-grained demux keyed by (dstQP, srcIP, srcQP). Used to dispatch packets
+    // to per-flow sockets after the listener creates them.
+    std::map<FlowKey, InnerEndPoint*> m_flowEndPoints;
 
     uint32_t m_innerPortFirst; // The minimum port number can be used
     uint32_t m_innerPortLast;  // The maximum port number can be used

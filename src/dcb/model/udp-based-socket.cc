@@ -570,6 +570,13 @@ UdpBasedSocket::GetLocalAddress() const
     return m_localAddress;
 }
 
+void
+UdpBasedSocket::SetPeerAddress(Ipv4Address peer)
+{
+    NS_LOG_FUNCTION(this);
+    m_defaultAddress = Address(peer);
+}
+
 Ipv4Address
 UdpBasedSocket::GetPeerAddress() const
 {

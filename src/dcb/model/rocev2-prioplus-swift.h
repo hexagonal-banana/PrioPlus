@@ -30,6 +30,7 @@
 
 #include <deque>
 #include <map>
+#include <vector>
 
 namespace ns3
 {
@@ -88,18 +89,9 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
      * When the sender receiving an probe packet's ACK.
      * This function will be passed to RoCEv2Socket as a Callback.
      */
-    void UpdateStateWithRecvProbeAck(Ptr<Packet> probe,
-                                     const RoCEv2Header& roce,
-                                     uint32_t senderNextPSN);
-
-    /**
-     * \brief Set send probe callback
-     */
-    void SetSendProbeCb(Callback<bool, uint32_t> sendProbeCb);
-    /**
-     * \brief Set send pending data callback
-     */
-    void SetSendPendingDataCb(Callback<void> sendCb);
+    void UpdateStateWithOutbandPkt(Ptr<Packet> probe,
+                                   const RoCEv2Header& roce,
+                                   uint32_t senderNextPSN) override;
 
     class Stats : public RoCEv2CongestionOps::Stats
     {
@@ -135,7 +127,7 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
         // No getter for simplicity
     };
 
-    std::shared_ptr<RoCEv2CongestionOps::Stats> GetStats() const;
+    std::shared_ptr<RoCEv2CongestionOps::Stats> GetStats() const override;
 
   private:
     /**
@@ -272,13 +264,6 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
     EventId m_probeEvent;                          //!< The event to send probe packet
     std::map<uint32_t, uint64_t> m_inflightProbes; //!< <psn, sendTs>
     Ptr<UniformRandomVariable> m_rngProbeTime;     //!< rng to choose probe time
-
-    Callback<bool, uint32_t> m_sendProbeCb;
-    /**
-     * \brief The SendPendingPacket() call back, called every time transact from probe to can send
-     * packet to the network.
-     */
-    Callback<void> m_sendPendingDataCb;
 }; // class RoCEv2PrioplusSwift
 
 class PrioplusHeader : public Header

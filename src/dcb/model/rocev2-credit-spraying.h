@@ -25,7 +25,9 @@
 #include "ns3/data-rate.h"
 #include "ns3/rocev2-header.h"
 
+#include <functional>
 #include <map>
+#include <vector>
 
 namespace ns3
 {
@@ -66,6 +68,13 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
                                const RoCEv2Header& roce,
                                const uint32_t senderNextPSN) override;
 
+    /**
+     * When receiving out-of-band packet (credit request), start sending credit ACKs.
+     */
+    void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
+                                   const RoCEv2Header& roce,
+                                   const uint32_t senderNextPSN) override;
+
     std::string GetName() const override;
 
         class Stats : public RoCEv2CongestionOps::Stats
@@ -88,10 +97,6 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
         return m_stats;
     }
 
-    /**
-     * \brief Set the callback to send CREDIT_REQUEST packet.
-     */
-    void SetSendCreditReqCb(Callback<bool, uint32_t> sendCreditReqCb);
 
   private:
     /**
@@ -100,6 +105,10 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
     void Init();
 
     std::shared_ptr<Stats> m_stats; //!< Statistics
+
+    void StartCreditAckLoop(const RoCEv2Header& roce);
+    void SendCreditAck(uint32_t psn);
+    Time ComputeCreditAckInterval(uint32_t ackBytes) const;
 
     /**
      * \brief Sender sends out CREDIT_REQUEST to request the receiver to send back the Credits.
@@ -115,8 +124,11 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
     void ScheduleNextCreditReq(Time rto);
 
     EventId m_cReqTimeOut; //!< The event to send credit request again
+    EventId m_creditAckEvent; //!< Repeating event to send credit ACKs
+    Time m_creditAckInterval;
+    double m_creditRateRatio;
+    bool m_stopCreditAckSent{false};
 
-    Callback<bool, uint32_t> m_sendCreditReqCb; // The callback to send credit request
 }; // class RoCEv2CreditSpraying
 
 } // namespace ns3

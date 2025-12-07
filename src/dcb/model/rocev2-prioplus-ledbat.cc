@@ -588,13 +588,17 @@ RoCEv2PrioplusLedbat::SendProbePacket()
         return;
     }
 
-    NS_ASSERT_MSG(!m_sendProbeCb.IsNull(), "SendProbeCb not set!");
+    NS_ASSERT_MSG(!m_sendOutbandPktCb.IsNull(), "SendOutbandPktCb not set!");
     // Check if the flow is stopped
     if (CheckStopCondition())
         return;
 
-    // Send a probe packet
-    bool success = m_sendProbeCb(m_probeSeq);
+    CongestionTypeTag ctTag(GetTypeId().GetUid());
+    ProbePacketTag ppTag(true);
+    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, ppTag};
+
+    // Send out-of-band probe packet
+    bool success = m_sendOutbandPktCb(m_probeSeq, true, packetTags);
     if (success)
     {
         // m_inflightProbes.push_back(std::make_pair(m_probeSeq,
@@ -611,7 +615,7 @@ RoCEv2PrioplusLedbat::SendProbePacket()
 
     // Schedule next probe
     // This event is just a placeholder and prevent for probe lost, the real probe event is
-    // scheduled in UpdateStateWithRecvProbeAck
+    // scheduled in UpdateStateWithOutbandPkt
     // m_probeEvent =
     //     Simulator::Schedule(100 * m_probeInterval, &RoCEv2PrioplusLedbat::SendProbePacket,
     //     this);
@@ -646,9 +650,9 @@ RoCEv2PrioplusLedbat::ScheduleProbePacket(Time delay)
 }
 
 void
-RoCEv2PrioplusLedbat::UpdateStateWithRecvProbeAck(Ptr<Packet> probe,
-                                                 const RoCEv2Header& roce,
-                                                 uint32_t senderNextPSN)
+RoCEv2PrioplusLedbat::UpdateStateWithOutbandPkt(Ptr<Packet> probe,
+                                               const RoCEv2Header& roce,
+                                               uint32_t senderNextPSN)
 {
     uint32_t ackSeq = roce.GetPSN();
     // Calculate the delay from the ACK
@@ -802,18 +806,6 @@ std::shared_ptr<RoCEv2CongestionOps::Stats>
 RoCEv2PrioplusLedbat::GetStats() const
 {
     return m_stats;
-}
-
-void
-RoCEv2PrioplusLedbat::SetSendProbeCb(Callback<bool, uint32_t> sendProbeCb)
-{
-    m_sendProbeCb = sendProbeCb;
-}
-
-void
-RoCEv2PrioplusLedbat::SetSendPendingDataCb(Callback<void> sendCb)
-{
-    m_sendPendingDataCb = sendCb;
 }
 
 RoCEv2PrioplusLedbat::Stats::Stats()
