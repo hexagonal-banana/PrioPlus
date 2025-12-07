@@ -178,7 +178,7 @@ RoCEv2CreditSpraying::UpdateStateWithRcvACK(Ptr<Packet> ack,
     NS_LOG_FUNCTION(this << ack << roce << senderNextPSN);
     uint32_t ackedPkts =
         std::max((uint32_t)0, roce.GetPSN() - m_sockState->GetTxBuffer()->GetFrontPsn());
-    m_sockState->SetCwnd(m_sockState->GetCwnd() + 1 - ackedPkts);
+    m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
     m_sendPendingDataCb(); // Trigger sending pending data packets
 
     // Stop sending further credit requests once any ACK is received
@@ -194,7 +194,7 @@ RoCEv2CreditSpraying::UpdateStateWithRcvACK(Ptr<Packet> ack,
         CongestionTypeTag ctTag(GetTypeId().GetUid());
         CreditRequestTag crTag(false);
         std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag};
-        bool success = m_sendOutbandPktCb(roce.GetPSN(), false, packetTags);
+        bool success = m_sendOutbandPktCb(roce.GetPSN(), true, packetTags);
         if (!success)
         {
             NS_LOG_WARN("Send stop Credit ACK signal failed!");
@@ -224,10 +224,11 @@ RoCEv2CreditSpraying::StartCreditAckLoop(const RoCEv2Header& roce)
     }
 
     // Compute interval based on current rate/size
-    Ptr<Packet> ack = RoCEv2L4Protocol::GenerateACK(roce.GetDestQP(),
-                                                    roce.GetSrcQP(),
-                                                    roce.GetPSN());
-    uint32_t ackBytes = ack->GetSize();
+    // Ptr<Packet> ack = RoCEv2L4Protocol::GenerateACK(roce.GetDestQP(),
+    //                                                 roce.GetSrcQP(),
+    //                                                 roce.GetPSN());
+    // uint32_t ackBytes = ack->GetSize();
+    uint32_t ackBytes = 64; // XXX Magic number for now
     m_creditAckInterval = ComputeCreditAckInterval(ackBytes);
 
     // Kick off immediately

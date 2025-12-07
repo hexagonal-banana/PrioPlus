@@ -675,6 +675,13 @@ RoCEv2Socket::CreateReceiverSocketForFlow(const RoCEv2Header& roce,
     {
         sock->SetRecvCallback(m_listenerRecvCb);
     }
+    // Carry over socket state baseline (packet sizing and RTT hints) from listener
+    Ptr<RoCEv2SocketState> childState = sock->m_sockState;
+    Ptr<RoCEv2SocketState> parentState = m_sockState;
+    childState->SetPacketSize(parentState->GetPacketSize());
+    childState->SetMss(parentState->GetMss());
+    childState->SetBaseRtt(parentState->GetBaseRtt());
+    childState->SetBaseOneWayDelay(parentState->GetBaseOneWayDelay());
     Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(originalPacket);
     sock->InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
     sock->m_rxState.ccOps->SetStopTime(Time::Max()); // avoid receiver socket close

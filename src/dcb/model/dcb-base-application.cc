@@ -244,6 +244,9 @@ DcbBaseApplication::SetupReceiverSocket()
             roceSocket->ShutdownSend();
             // Set stop time to max to avoid receiver socket close
             roceSocket->SetStopTime(Time::Max());
+            // Mirror sender-side socket state so receiver-side CC has packet sizing info
+            roceSocket->GetSocketState()->SetPacketSize(MSS + m_dataHeaderSize);
+            roceSocket->GetSocketState()->SetMss(MSS);
             // Listener socket receives all incoming packets and forwards them to the app via
             // HandleRead.
             roceSocket->SetListenerMode(MakeCallback(&DcbBaseApplication::HandleRead, this));
