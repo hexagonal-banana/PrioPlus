@@ -352,6 +352,7 @@ class UdpBasedSocket : public Socket
     void SetLocalAddress(Ipv4Address local);
     virtual Ipv4Address GetLocalAddress() const;
     virtual Ipv4Address GetPeerAddress() const;
+    void SetPeerAddress(Ipv4Address peer);
     virtual uint32_t GetSrcPort() const;
     virtual uint32_t GetDstPort() const;
 

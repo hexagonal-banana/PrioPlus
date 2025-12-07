@@ -808,12 +808,6 @@ RoCEv2PrioplusLedbat::GetStats() const
     return m_stats;
 }
 
-void
-RoCEv2PrioplusLedbat::SetSendPendingDataCb(Callback<void> sendCb)
-{
-    m_sendPendingDataCb = sendCb;
-}
-
 RoCEv2PrioplusLedbat::Stats::Stats()
 {
     NS_LOG_FUNCTION(this);

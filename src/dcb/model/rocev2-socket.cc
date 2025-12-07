@@ -414,7 +414,10 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
     {
     case AETHeader::SyndromeType::FC_DISABLED: { // normal ACK
         // Note that the psn in ACK's BTH is expected PSN, not the PSN of the ACKed packet
-        m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
+        if (roce.GetPSN() != 0) // In RECEIVER_DRIVEN mode, the PSN of the ACKed packet could be 0
+        {
+            m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
+        }
 
         if (m_txBuffer.GetFrontPsn() == m_psnEnd)
         {
@@ -479,8 +482,8 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
         return;
     }
 
-    Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(packet);
-    InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
+    // Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(packet);
+    // InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
 
     if (m_sockState->m_receivedEcn) // ECN congestion encountered
     {
@@ -576,7 +579,9 @@ RoCEv2Socket::CreateCcOpsFromTag(Ptr<Packet> packet)
         ObjectFactory factory;
         factory.SetTypeId(m_congTypeId);
         ccOps = factory.Create<RoCEv2CongestionOps>();
-    } else{
+    }
+    else
+    {
         ObjectFactory congestionAlgorithmFactory;
         congestionAlgorithmFactory.SetTypeId(ctTag.GetCongestionTypeId());
         ccOps = congestionAlgorithmFactory.Create<RoCEv2CongestionOps>();
@@ -663,6 +668,9 @@ RoCEv2Socket::CreateReceiverSocketForFlow(const RoCEv2Header& roce,
     sock->BindToNetDevice(m_boundnetdevice);
     sock->BindToFlow(roce.GetDestQP(), header.GetSource(), roce.GetSrcQP());
     sock->SetIpTos(GetIpTos());
+    // Ensure the child socket knows its local and peer addresses for later queries
+    sock->SetLocalAddress(header.GetDestination());
+    sock->SetPeerAddress(header.GetSource());
     if (!m_listenerRecvCb.IsNull())
     {
         sock->SetRecvCallback(m_listenerRecvCb);
@@ -849,28 +857,11 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId)
     // Record the congestion type
     m_congTypeId = congTypeId;
 
-    // Set SendOutbandPkt and SendPendingPacket callbacks for RoCEv2Prioplus
     using SendOutbandCb =
         Callback<bool, uint32_t, bool, const std::vector<std::reference_wrapper<const Tag>>&>;
     const SendOutbandCb sendOutbandCb = MakeCallback(&RoCEv2Socket::SendOutbandPkt, this);
-
-    if (congTypeId == RoCEv2PrioplusLedbat::GetTypeId())
-    {
-        Ptr<RoCEv2PrioplusLedbat> prioplus = DynamicCast<RoCEv2PrioplusLedbat>(algo);
-        prioplus->SetSendOutbandPktCb(sendOutbandCb);
-        prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
-    }
-    else if (congTypeId == RoCEv2PrioplusSwift::GetTypeId())
-    {
-        Ptr<RoCEv2PrioplusSwift> prioplus = DynamicCast<RoCEv2PrioplusSwift>(algo);
-        prioplus->SetSendOutbandPktCb(sendOutbandCb);
-        prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
-    }
-    else if (congTypeId == RoCEv2CreditSpraying::GetTypeId())
-    {
-        Ptr<RoCEv2CreditSpraying> creditSpraying = DynamicCast<RoCEv2CreditSpraying>(algo);
-        creditSpraying->SetSendOutbandPktCb(sendOutbandCb);
-    }
+    m_ccOps->SetSendOutbandPktCb(sendOutbandCb);
+    m_ccOps->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
 }
 
 void

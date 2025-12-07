@@ -202,19 +202,28 @@ class RoCEv2CongestionOps : public Object
 
     virtual std::shared_ptr<Stats> GetStats() const;
 
-    using SendOutbandPktCb = Callback<bool,
-                                      uint32_t,
-                                      bool,
-                                      const std::vector<std::reference_wrapper<const Tag>>&>;
+    using SendOutbandPktCb =
+        Callback<bool, uint32_t, bool, const std::vector<std::reference_wrapper<const Tag>>&>;
+    using SendPendingDataCb = Callback<void>;
 
     /**
      * \brief Set callback to send out-of-band packets (probe, credit request, etc.).
      */
     virtual void SetSendOutbandPktCb(SendOutbandPktCb cb);
 
+    /**
+     * \brief Set callback to trigger sending pending data packets.
+     */
+    virtual void SetSendPendingDataCb(SendPendingDataCb cb);
+
   protected:
-    std::shared_ptr<Stats> m_stats; //!< Statistics
+    std::shared_ptr<Stats> m_stats;      //!< Statistics
     SendOutbandPktCb m_sendOutbandPktCb; //!< Callback to send out-of-band packets
+    /**
+     * \brief The SendPendingPacket() call back, called every time transact from probe to can send
+     * packet to the network.
+     */
+    SendPendingDataCb m_sendPendingDataCb;
 
     /**
      * \return true if current time is not over stopTime.

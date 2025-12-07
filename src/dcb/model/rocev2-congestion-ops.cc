@@ -196,6 +196,12 @@ RoCEv2CongestionOps::SetSendOutbandPktCb(SendOutbandPktCb cb)
     m_sendOutbandPktCb = cb;
 }
 
+void
+RoCEv2CongestionOps::SetSendPendingDataCb(SendPendingDataCb cb)
+{
+    m_sendPendingDataCb = cb;
+}
+
 RoCEv2CongestionOps::Stats::Stats()
 {
     NS_LOG_FUNCTION(this);

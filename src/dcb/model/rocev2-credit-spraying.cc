@@ -179,6 +179,7 @@ RoCEv2CreditSpraying::UpdateStateWithRcvACK(Ptr<Packet> ack,
     uint32_t ackedPkts =
         std::max((uint32_t)0, roce.GetPSN() - m_sockState->GetTxBuffer()->GetFrontPsn());
     m_sockState->SetCwnd(m_sockState->GetCwnd() + 1 - ackedPkts);
+    m_sendPendingDataCb(); // Trigger sending pending data packets
 
     // Stop sending further credit requests once any ACK is received
     if (m_cReqTimeOut.IsRunning())

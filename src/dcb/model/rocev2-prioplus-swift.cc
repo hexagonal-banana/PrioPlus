@@ -922,12 +922,6 @@ RoCEv2PrioplusSwift::GetStats() const
     return m_stats;
 }
 
-void
-RoCEv2PrioplusSwift::SetSendPendingDataCb(Callback<void> sendCb)
-{
-    m_sendPendingDataCb = sendCb;
-}
-
 RoCEv2PrioplusSwift::Stats::Stats()
 {
     NS_LOG_FUNCTION(this);

@@ -93,11 +93,6 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
                                    const RoCEv2Header& roce,
                                    uint32_t senderNextPSN) override;
 
-    /**
-     * \brief Set send pending data callback
-     */
-    void SetSendPendingDataCb(Callback<void> sendCb);
-
     class Stats : public RoCEv2CongestionOps::Stats
     {
       public:
@@ -269,12 +264,6 @@ class RoCEv2PrioplusSwift : public RoCEv2CongestionOps
     EventId m_probeEvent;                          //!< The event to send probe packet
     std::map<uint32_t, uint64_t> m_inflightProbes; //!< <psn, sendTs>
     Ptr<UniformRandomVariable> m_rngProbeTime;     //!< rng to choose probe time
-
-    /**
-     * \brief The SendPendingPacket() call back, called every time transact from probe to can send
-     * packet to the network.
-     */
-    Callback<void> m_sendPendingDataCb;
 }; // class RoCEv2PrioplusSwift
 
 class PrioplusHeader : public Header
