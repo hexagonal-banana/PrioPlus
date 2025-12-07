@@ -120,7 +120,6 @@ RoCEv2Socket::RoCEv2Socket()
                              MakeCallback(&RoCEv2Socket::CreateNextProtocolHeader, this))),
       m_senderNextPSN(0),
       m_isListener(false),
-      m_psnEnd(0),
       m_waitingForSchedule(false),
       m_lastRto(Time(0)),
       m_flowState(FlowState::PENDING)
@@ -152,9 +151,6 @@ RoCEv2Socket::DoSendTo(Ptr<Packet> payload, Ipv4Address daddr, Ptr<Ipv4Route> ro
     uint32_t mss = m_sockState->GetMss();
     m_stats->nTotalSizePkts += (payload->GetSize() + mss - 1) / mss;
     m_stats->nTotalSizeBytes += payload->GetSize();
-
-    // Calculate the end PSN
-    m_psnEnd = (payload->GetSize() + mss - 1) / mss;
 
     m_txBuffer.RecvPayload(payload, daddr, route, mss);
     m_sockState->SetFlowTotalSize(payload->GetSize());
@@ -419,7 +415,7 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
             m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
         }
 
-        if (m_txBuffer.GetFrontPsn() == m_psnEnd)
+        if (m_txBuffer.IsSendFinish())
         {
             // last ACk received, flow finshed
             Finish();
@@ -1003,12 +999,12 @@ RoCEv2Socket::Terminate()
     m_stats->nTotalSizeBytes -= m_txBuffer.RemainSizeInBytes();
     m_stats->nTotalSizePkts -= m_txBuffer.RemainSizeInPacket();
 
-    m_psnEnd =
-        m_txBuffer.TotalSize() - m_txBuffer.RemainSizeInPacket(); // Sent but not Acked + Acked
+    // Sent but not Acked + Acked
+    m_txBuffer.SetEndPsn(m_txBuffer.TotalSize() - m_txBuffer.RemainSizeInPacket());
     m_txBuffer.ClearPayload();
-    // Remove all psn in txQueue if the psn >= m_psnEnd
-    m_txBuffer.ClearTxQueue(m_psnEnd);
-    if (m_txBuffer.GetFrontPsn() == m_psnEnd)
+    // Remove all psn in txQueue if the psn >= endPsn
+    m_txBuffer.ClearTxQueue(m_txBuffer.GetEndPsn());
+    if (m_txBuffer.IsSendFinish())
     {
         // No unacked pkt, the flow is finished
         Finish();
@@ -1274,6 +1270,7 @@ DcbTxBuffer::DcbTxBuffer(Callback<void> sendCb, Callback<RoCEv2Header> createRoc
       m_createRocev2HeaderCb(createRocev2HeaderCb),
       m_frontPsn(0),
       m_maxAckedPsn(0),
+      m_endPsn(0),
       m_maxSentPsn(0)
 {
 }
@@ -1296,7 +1293,8 @@ DcbTxBuffer::RecvPayload(Ptr<Packet> payload, Ipv4Address daddr, Ptr<Ipv4Route> 
     m_daddr = daddr;
     m_route = route;
     m_mss = mss;
-    for (uint32_t i = 0; i < TotalSize(); i++)
+    m_endPsn = TotalSize();
+    for (uint32_t i = 0; i < m_endPsn; i++)
     {
         m_acked.push_back(false);
         m_pktState.push_back(TxPacketState::UNDEF);
@@ -1545,6 +1543,24 @@ uint32_t
 DcbTxBuffer::GetFrontPsn() const
 {
     return m_frontPsn;
+}
+
+void
+DcbTxBuffer::SetEndPsn(uint32_t endPsn)
+{
+    m_endPsn = endPsn;
+}
+
+uint32_t
+DcbTxBuffer::GetEndPsn() const
+{
+    return m_endPsn;
+}
+
+bool
+DcbTxBuffer::IsSendFinish() const
+{
+    return m_frontPsn == m_endPsn;
 }
 
 bool

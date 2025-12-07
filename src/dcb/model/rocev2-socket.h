@@ -235,6 +235,18 @@ class DcbTxBuffer : public Object
      * \brief Clear all psn >= given psn in the txQueue. Used to terminate the socket.
      */
     void ClearTxQueue(uint32_t psn);
+    /**
+     * \brief Set the end PSN (last PSN + 1) of the current flow.
+     */
+    void SetEndPsn(uint32_t endPsn);
+    /**
+     * \brief Get the end PSN (last PSN + 1) of the current flow.
+     */
+    uint32_t GetEndPsn() const;
+    /**
+     * \brief Whether all packets have been acknowledged.
+     */
+    bool IsSendFinish() const;
 
   protected:
     /**
@@ -259,13 +271,13 @@ class DcbTxBuffer : public Object
 
     std::deque<DcbTxBufferItem> m_buffer;
     uint32_t m_frontPsn;     // PSN of the front item in the buffer. Only increase when acked.
-    uint32_t m_prevFrontPsn; // previous FrontPsn.
     std::priority_queue<uint32_t, std::vector<uint32_t>, std::greater<>>
         m_txQueue;             // PSN of the items to be sent
     std::vector<bool> m_acked; // Whether the packet with the PSN is acked, serve as a bitmap in
                                // retx mode IRN. The index is the PSN.
     std::vector<uint8_t> m_pktState; // the state of a packet(ack, unack, lost, undef)
     uint32_t m_maxAckedPsn;          // The max PSN which has been acknowledged, used to detect gap.
+    uint32_t m_endPsn;               // The last PSN + 1, used to check if flow completes.
 
     uint32_t m_remainSize;  // The size of data to be sent
     uint32_t m_maxSentPsn;  // The max PSN has been sent
@@ -789,7 +801,6 @@ class RoCEv2Socket : public UdpBasedSocket
     bool m_isListener;
     Callback<void, Ptr<Socket>> m_listenerRecvCb;
     std::map<RxFlowKey, Ptr<RoCEv2Socket>> m_childRxSockets;
-    uint32_t m_psnEnd; //!< the last PSN + 1, used to check if flow completes
 
     Time m_CNPInterval; //!< Interval to send CNP
     Time m_flowStartTime;

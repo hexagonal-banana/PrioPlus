@@ -116,7 +116,7 @@
                 "CongestionType": "ns3::RoCEv2CreditSpraying",
                 "SendEnabled": true,
                 "TrafficPattern": "SendOnce",
-                "TrafficSizeBytes": 1000,
+                "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
                 "DestinationNode": 1
@@ -125,7 +125,7 @@
                 "InnerPriority": 0
             },
             "congestionConfig": {
-                "CreditRateRatio": 0.5
+                "CreditRateRatio": 0.1
             },
             "startTime": "0.1s",
             "flowInterval": "0.00002s"

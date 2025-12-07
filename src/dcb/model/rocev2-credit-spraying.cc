@@ -42,7 +42,7 @@ RoCEv2CreditSpraying::GetTypeId()
                             .SetGroupName("Dcb")
                             .AddAttribute("CreditRateRatio",
                                           "Ratio for credit ACK sending rate (0~1).",
-                                          DoubleValue(0.5),
+                                          DoubleValue(0.1),
                                           MakeDoubleAccessor(&RoCEv2CreditSpraying::m_creditRateRatio),
                                           MakeDoubleChecker<double>(0.0, 1.0));
     return tid;
@@ -188,13 +188,13 @@ RoCEv2CreditSpraying::UpdateStateWithRcvACK(Ptr<Packet> ack,
     }
 
     // If all data are acknowledged, send a stop-credit message once
-    if (!m_stopCreditAckSent && m_sockState->GetTxBuffer()->GetSizeToBeSent() == 0)
+    if (!m_stopCreditAckSent && roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn())
     {
         m_stopCreditAckSent = true;
         CongestionTypeTag ctTag(GetTypeId().GetUid());
         CreditRequestTag crTag(false);
         std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag};
-        bool success = m_sendOutbandPktCb(roce.GetPSN(), true, packetTags);
+        bool success = m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
         if (!success)
         {
             NS_LOG_WARN("Send stop Credit ACK signal failed!");
