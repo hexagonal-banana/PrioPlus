@@ -127,7 +127,7 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
     EventId m_creditAckEvent; //!< Repeating event to send credit ACKs
     Time m_creditAckInterval;
     double m_creditRateRatio;
-    bool m_stopCreditAckSent{false};
+    uint32_t m_recvAckAfterFinish{0};
 
 }; // class RoCEv2CreditSpraying
 
