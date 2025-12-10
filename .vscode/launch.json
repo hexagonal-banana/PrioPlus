@@ -100,7 +100,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
-                "config/demos/symmetric-hashing.json"
+                "config/demos/cc-tree4/cc-credit.json"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
