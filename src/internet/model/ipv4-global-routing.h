@@ -26,7 +26,6 @@
 #include "ns3/ipv4-address.h"
 #include "ns3/ptr.h"
 #include "ns3/random-variable-stream.h"
-#include "ns3/rocev2-credit-spray.h"
 
 #include <list>
 #include <stdint.h>

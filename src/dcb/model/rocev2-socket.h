@@ -21,7 +21,7 @@
 #define ROCEV2_SOCKET_H
 
 #include "rocev2-congestion-ops.h"
-#include "rocev2-credit-spraying.h"
+#include "rocev2-credit-cc.h"
 #include "rocev2-prioplus-ledbat.h"
 #include "rocev2-prioplus-swift.h"
 #include "udp-based-socket.h"

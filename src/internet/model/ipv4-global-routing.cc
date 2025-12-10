@@ -41,7 +41,6 @@
 #include "udp-header.h"
 
 #include "ns3/uinteger.h"
-#include "ns3/rocev2-credit-spray.h"
 
 namespace ns3
 {

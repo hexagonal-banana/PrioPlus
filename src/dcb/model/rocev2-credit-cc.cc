@@ -1,23 +1,4 @@
-/*
- * Copyright (c) 2008 INRIA
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation;
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
- *
- * Author: F.Y. Xue <xue.fyang@foxmail.com>
- */
-
-#include "rocev2-credit-spraying.h"
+#include "rocev2-credit-cc.h"
 
 #include "rocev2-l4-protocol.h"
 #include "rocev2-socket.h"
@@ -29,27 +10,27 @@
 namespace ns3
 {
 
-NS_LOG_COMPONENT_DEFINE("RoCEv2CreditSpraying");
+NS_LOG_COMPONENT_DEFINE("RoCEv2CreditCc");
 
-NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpraying);
+NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditCc);
 
 TypeId
-RoCEv2CreditSpraying::GetTypeId()
+RoCEv2CreditCc::GetTypeId()
 {
     static TypeId tid =
-        TypeId("ns3::RoCEv2CreditSpraying")
+        TypeId("ns3::RoCEv2CreditCc")
             .SetParent<RoCEv2CongestionOps>()
-            .AddConstructor<RoCEv2CreditSpraying>()
+            .AddConstructor<RoCEv2CreditCc>()
             .SetGroupName("Dcb")
             .AddAttribute("CreditRateRatio",
                           "Ratio for credit ACK sending rate (0~1).",
                           DoubleValue(1.0),
-                          MakeDoubleAccessor(&RoCEv2CreditSpraying::m_creditRateRatio),
+                          MakeDoubleAccessor(&RoCEv2CreditCc::m_creditRateRatio),
                           MakeDoubleChecker<double>(0.0, 1.0));
     return tid;
 }
 
-RoCEv2CreditSpraying::RoCEv2CreditSpraying()
+RoCEv2CreditCc::RoCEv2CreditCc()
     : RoCEv2CongestionOps(std::make_shared<Stats>()),
       m_stats(std::dynamic_pointer_cast<Stats>(RoCEv2CongestionOps::m_stats))
 {
@@ -57,7 +38,7 @@ RoCEv2CreditSpraying::RoCEv2CreditSpraying()
     Init();
 }
 
-RoCEv2CreditSpraying::RoCEv2CreditSpraying(Ptr<RoCEv2SocketState> sockState)
+RoCEv2CreditCc::RoCEv2CreditCc(Ptr<RoCEv2SocketState> sockState)
     : RoCEv2CongestionOps(sockState, std::make_shared<Stats>()),
       m_stats(std::dynamic_pointer_cast<Stats>(RoCEv2CongestionOps::m_stats))
 {
@@ -65,13 +46,13 @@ RoCEv2CreditSpraying::RoCEv2CreditSpraying(Ptr<RoCEv2SocketState> sockState)
     Init();
 }
 
-RoCEv2CreditSpraying::~RoCEv2CreditSpraying()
+RoCEv2CreditCc::~RoCEv2CreditCc()
 {
     NS_LOG_FUNCTION(this);
 }
 
 void
-RoCEv2CreditSpraying::SetReady()
+RoCEv2CreditCc::SetReady()
 {
     NS_LOG_FUNCTION(this);
     // send credit request and set timer for it
@@ -79,7 +60,96 @@ RoCEv2CreditSpraying::SetReady()
 }
 
 void
-RoCEv2CreditSpraying::SendCreditRequest(Time rto)
+RoCEv2CreditCc::UpdateStateSend(Ptr<Packet> packet)
+{
+    NS_LOG_FUNCTION(this << packet);
+
+    // Get packet's PSN from roceheader.
+    RoCEv2Header roceHeader;
+    packet->PeekHeader(roceHeader);
+}
+
+void
+RoCEv2CreditCc::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
+                                           const RoCEv2Header& roce,
+                                           const uint32_t senderNextPSN)
+{
+    NS_LOG_FUNCTION(this << packet << roce << senderNextPSN);
+    CreditRequestTag crTag;
+    if (!packet->RemovePacketTag(crTag))
+    {
+        return;
+    }
+
+    if (crTag.IsRequest())
+    {
+        StartCreditAckLoop(roce);
+    }
+    else
+    {
+        // Stop credit ACK loop when receiving stop signal
+        if (m_creditAckEvent.IsRunning())
+        {
+            m_creditAckEvent.Cancel();
+        }
+    }
+}
+
+void
+RoCEv2CreditCc::UpdateStateWithRcvACK(Ptr<Packet> ack,
+                                       const RoCEv2Header& roce,
+                                       const uint32_t senderNextPSN)
+{
+    // ACK works as Credit in this CC
+    NS_LOG_FUNCTION(this << ack << roce << senderNextPSN);
+    uint32_t ackedPkts =
+        std::max((uint32_t)0, roce.GetPSN() - m_sockState->GetTxBuffer()->GetFrontPsn());
+    /**
+     * When receiving a credit, we want the right bound of the window +1, strictly.
+     * To achieve this, we do these operations:
+     * 1. cwnd -= ackedPkts: the ackedPkts is how many packets the left bound moved. We minus it to
+     * make the right bound do not move.
+     * 2. cwnd += 1: make the right bound move 1 packet.
+     */
+    m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
+    m_sendPendingDataCb(); // Trigger sending pending data packets
+
+    // Stop sending further credit requests once any ACK is received
+    if (m_cReqTimeOut.IsRunning())
+    {
+        m_cReqTimeOut.Cancel();
+    }
+
+    // If all data are acknowledged, send a stop-credit message once
+    if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
+        m_recvAckAfterFinish++ % 20 == 0)
+    {
+        CongestionTypeTag ctTag(GetTypeId().GetUid());
+        CreditRequestTag crTag(false);
+        std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag};
+        bool success =
+            m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
+        if (!success)
+        {
+            NS_LOG_WARN("Send stop Credit ACK signal failed!");
+        }
+    }
+}
+
+std::string
+RoCEv2CreditCc::GetName() const
+{
+    return "RoCEv2CreditCc";
+}
+
+void
+RoCEv2CreditCc::Init()
+{
+    RegisterCongestionType(GetTypeId());
+}
+
+void
+RoCEv2CreditCc::SendCreditRequest(Time rto)
 {
     NS_LOG_FUNCTION(this << rto);
     // To stop sending, we set the cwnd to 0
@@ -119,7 +189,7 @@ RoCEv2CreditSpraying::SendCreditRequest(Time rto)
 }
 
 void
-RoCEv2CreditSpraying::ScheduleNextCreditReq(Time rto)
+RoCEv2CreditCc::ScheduleNextCreditReq(Time rto)
 {
     NS_LOG_FUNCTION(this << rto);
     // Cancel previous probe event
@@ -127,103 +197,14 @@ RoCEv2CreditSpraying::ScheduleNextCreditReq(Time rto)
     {
         m_cReqTimeOut.Cancel();
     }
-    m_cReqTimeOut = Simulator::Schedule(rto, &RoCEv2CreditSpraying::SendCreditRequest, this, rto);
+    m_cReqTimeOut = Simulator::Schedule(rto, &RoCEv2CreditCc::SendCreditRequest, this, rto);
     NS_LOG_DEBUG(Simulator::Now().GetPicoSeconds()
                  << " " << Simulator::GetContext() << " Schedule probe after "
                  << rto.GetPicoSeconds() << "ps");
 }
 
 void
-RoCEv2CreditSpraying::UpdateStateSend(Ptr<Packet> packet)
-{
-    NS_LOG_FUNCTION(this << packet);
-
-    // Get packet's PSN from roceheader.
-    RoCEv2Header roceHeader;
-    packet->PeekHeader(roceHeader);
-}
-
-void
-RoCEv2CreditSpraying::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
-                                                const RoCEv2Header& roce,
-                                                const uint32_t senderNextPSN)
-{
-    NS_LOG_FUNCTION(this << packet << roce << senderNextPSN);
-    CreditRequestTag crTag;
-    if (!packet->RemovePacketTag(crTag))
-    {
-        return;
-    }
-
-    if (crTag.IsRequest())
-    {
-        StartCreditAckLoop(roce);
-    }
-    else
-    {
-        // Stop credit ACK loop when receiving stop signal
-        if (m_creditAckEvent.IsRunning())
-        {
-            m_creditAckEvent.Cancel();
-        }
-    }
-}
-
-void
-RoCEv2CreditSpraying::UpdateStateWithRcvACK(Ptr<Packet> ack,
-                                            const RoCEv2Header& roce,
-                                            const uint32_t senderNextPSN)
-{
-    // ACK works as Credit in this CC
-    NS_LOG_FUNCTION(this << ack << roce << senderNextPSN);
-    uint32_t ackedPkts =
-        std::max((uint32_t)0, roce.GetPSN() - m_sockState->GetTxBuffer()->GetFrontPsn());
-    /**
-     * When receiving a credit, we want the right bound of the window +1, strictly.
-     * To achieve this, we do these operations:
-     * 1. cwnd -= ackedPkts: the ackedPkts is how many packets the left bound moved. We minus it to
-     * make the right bound do not move.
-     * 2. cwnd += 1: make the right bound move 1 packet.
-     */
-    m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
-    m_sendPendingDataCb(); // Trigger sending pending data packets
-
-    // Stop sending further credit requests once any ACK is received
-    if (m_cReqTimeOut.IsRunning())
-    {
-        m_cReqTimeOut.Cancel();
-    }
-
-    // If all data are acknowledged, send a stop-credit message once
-    if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
-        m_recvAckAfterFinish++ % 20 == 0)
-    {
-        CongestionTypeTag ctTag(GetTypeId().GetUid());
-        CreditRequestTag crTag(false);
-        std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag};
-        bool success =
-            m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
-        if (!success)
-        {
-            NS_LOG_WARN("Send stop Credit ACK signal failed!");
-        }
-    }
-}
-
-std::string
-RoCEv2CreditSpraying::GetName() const
-{
-    return "CreditSpraying";
-}
-
-void
-RoCEv2CreditSpraying::Init()
-{
-    RegisterCongestionType(GetTypeId());
-}
-
-void
-RoCEv2CreditSpraying::StartCreditAckLoop(const RoCEv2Header& roce)
+RoCEv2CreditCc::StartCreditAckLoop(const RoCEv2Header& roce)
 {
     NS_LOG_FUNCTION(this << roce);
     if (m_creditAckEvent.IsRunning())
@@ -244,7 +225,7 @@ RoCEv2CreditSpraying::StartCreditAckLoop(const RoCEv2Header& roce)
 }
 
 Time
-RoCEv2CreditSpraying::ComputeCreditAckInterval(uint32_t ackBytes) const
+RoCEv2CreditCc::ComputeCreditAckInterval(uint32_t ackBytes) const
 {
     NS_LOG_FUNCTION(this << ackBytes);
     // Guard against invalid state
@@ -274,7 +255,7 @@ RoCEv2CreditSpraying::ComputeCreditAckInterval(uint32_t ackBytes) const
 }
 
 void
-RoCEv2CreditSpraying::SendCreditAck(uint32_t psn)
+RoCEv2CreditCc::SendCreditAck(uint32_t psn)
 {
     NS_LOG_FUNCTION(this << psn);
     if (CheckStopCondition())
@@ -296,13 +277,13 @@ RoCEv2CreditSpraying::SendCreditAck(uint32_t psn)
     if (m_creditAckInterval.IsStrictlyPositive())
     {
         m_creditAckEvent = Simulator::Schedule(m_creditAckInterval,
-                                               &RoCEv2CreditSpraying::SendCreditAck,
+                                               &RoCEv2CreditCc::SendCreditAck,
                                                this,
                                                psn);
     }
 }
 
-RoCEv2CreditSpraying::Stats::Stats()
+RoCEv2CreditCc::Stats::Stats()
 {
     NS_LOG_FUNCTION(this);
     BooleanValue bv;

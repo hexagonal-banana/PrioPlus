@@ -17,8 +17,8 @@
  * Author: F.Y. Xue <xue.fyang@foxmail.com>
  */
 
-#ifndef ROCEV2_CREDIT_SPRAYING_H
-#define ROCEV2_CREDIT_SPRAYING_H
+#ifndef ROCEV2_CREDIT_CC_H
+#define ROCEV2_CREDIT_CC_H
 
 #include "rocev2-congestion-ops.h"
 
@@ -34,7 +34,7 @@ namespace ns3
 
 class RoCEv2SocketState;
 
-class RoCEv2CreditSpraying : public RoCEv2CongestionOps
+class RoCEv2CreditCc : public RoCEv2CongestionOps
 {
   public:
     /**
@@ -44,9 +44,9 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
      */
     static TypeId GetTypeId();
 
-    RoCEv2CreditSpraying();
-    RoCEv2CreditSpraying(Ptr<RoCEv2SocketState> sockState);
-    ~RoCEv2CreditSpraying() override;
+    RoCEv2CreditCc();
+    RoCEv2CreditCc(Ptr<RoCEv2SocketState> sockState);
+    ~RoCEv2CreditCc() override;
 
     // void SetRateAIRatio(double ratio);
     // void SetRateHyperAIRatio(double ratio);
@@ -96,16 +96,8 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
     {
         return m_stats;
     }
-
-
-  private:
-    /**
-     * Initialize the state.
-     */
-    void Init();
-
     std::shared_ptr<Stats> m_stats; //!< Statistics
-
+    
     void StartCreditAckLoop(const RoCEv2Header& roce);
     void SendCreditAck(uint32_t psn);
     Time ComputeCreditAckInterval(uint32_t ackBytes) const;
@@ -123,14 +115,16 @@ class RoCEv2CreditSpraying : public RoCEv2CongestionOps
      */
     void ScheduleNextCreditReq(Time rto);
 
+private:
+    void Init();
     EventId m_cReqTimeOut; //!< The event to send credit request again
     EventId m_creditAckEvent; //!< Repeating event to send credit ACKs
     Time m_creditAckInterval;
     double m_creditRateRatio;
     uint32_t m_recvAckAfterFinish{0};
 
-}; // class RoCEv2CreditSpraying
+}; // class RoCEv2CreditCc
 
 } // namespace ns3
 
-#endif // CREDIT_SPRAYING_H
+#endif // ROCEV2_CREDIT_CC_H

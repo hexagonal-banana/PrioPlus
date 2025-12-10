@@ -26,7 +26,7 @@ build_lib(
 	  model/rocev2-l4-protocol.cc
 	  model/rocev2-socket.cc
 	  model/rocev2-congestion-ops.cc
-	  model/rocev2-credit-spraying.cc
+	  model/rocev2-credit-cc.cc
 	  model/rocev2-dcqcn.cc
 	  model/rocev2-dctcp.cc
 	  model/rocev2-hpcc.cc
@@ -39,9 +39,9 @@ build_lib(
 	  model/rocev2-poseidon.cc
 	  model/rocev2-d2tcp.cc
 	  model/rocev2-nocc.cc
-	  model/rocev2-credit-spray.cc
 	  model/switch-node.cc
 	  model/leaky-bucket.cc
+	  model/rocev2-expresspass.cc
 	  utils/hpcc-header.cc
 	  utils/poseidon-header.cc
 	  utils/pfc-frame.cc
@@ -72,7 +72,7 @@ build_lib(
 	  model/rocev2-l4-protocol.h
 	  model/rocev2-socket.h
 	  model/rocev2-congestion-ops.h
-	  model/rocev2-credit-spraying.h
+	  model/rocev2-credit-cc.h
 	  model/rocev2-dcqcn.h
 	  model/rocev2-dctcp.h
 	  model/rocev2-hpcc.h
@@ -86,8 +86,8 @@ build_lib(
 	  model/rocev2-d2tcp.h
 	  model/rocev2-nocc.h
 	  model/switch-node.h
-	  model/rocev2-credit-spray.h
 	  model/leaky-bucket.h
+	  model/rocev2-expresspass.h
 	  utils/hpcc-header.h
 	  utils/poseidon-header.h
 	  utils/pfc-frame.h
