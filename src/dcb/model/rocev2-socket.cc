@@ -1019,9 +1019,14 @@ RoCEv2Socket::Finish()
     NotifyFlowCompletes();
     m_flowState = FINISHED;
 
+    /**
+     * Do not close the socket (deallocate the endpoint in l4 protocol) immediately after the flow
+     * is finished. This is for the sender to reply extra credit request (false) packet to receiver
+     * in case the previous one is lost.
+     */
     // Filter the orphan CNP packets at UdpBasedL4Protocol, thus the socket can be closed
     // immediately
-    Close();
+    // Close();
 
     // Stop the retransmission timer
     if (m_rtoEvent.IsRunning())

@@ -3,7 +3,7 @@
         "topo": "config/topo/1to1.txt"
     },
     "outputFile": {
-        "resultFile": "output/*.json"
+        "resultFile": "output/*-1.json"
     },
     "runtimeConfig": {
         "seed": 8259,
@@ -116,7 +116,7 @@
                 "CongestionType": "ns3::RoCEv2CreditSpraying",
                 "SendEnabled": true,
                 "TrafficPattern": "SendOnce",
-                "TrafficSizeBytes": 10000000,
+                "TrafficSizeBytes": 100000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
                 "DestinationNode": 1
