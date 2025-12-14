@@ -55,7 +55,8 @@ class SwitchNode : public Node
     {
         PER_PACKET,
         PER_FLOW_ECMP,
-        PER_PACKET_SYMMETRIC
+        PER_PACKET_SYMMETRIC,
+        PER_FLOW_SYMMETRIC
     };
     union HashBuf {
         struct

@@ -2,6 +2,7 @@
 #define EXPRESSPASS_H
 
 #include "rocev2-credit-cc.h"
+#include "ns3/ipv4-global-routing.h"
 #include <queue>
 
 namespace ns3{
@@ -23,8 +24,8 @@ namespace ns3{
                             const uint32_t senderNextPSN) override;
     void StartCreditAckLoop(const RoCEv2Header& roce);
     void UpdateStateRecvData(Ptr<Packet> packet) override;
-    void SendCreditRequest(Time rto) ;
-    void SendCreditAck(uint32_t psn) ;
+    void SendCreditRequest(Time rto) override;
+    void SendCreditAck(uint32_t psn) override;
     void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
                                    const RoCEv2Header& roce,
                                    const uint32_t senderNextPSN) override;
@@ -95,6 +96,9 @@ namespace ns3{
     uint64_t m_lastUpadateRateSeq;
     uint64_t m_nextUpdateSeq;
     RateControlLastAction m_rateControlLastAction;
+
+    PathTag m_creditPathTag;
+    //PathTag m_dataPathTag;
 };
 }
 

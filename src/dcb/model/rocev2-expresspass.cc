@@ -179,7 +179,7 @@ RoCEv2ExpressPass::SendCreditAck(uint32_t psn)
 
     CreditSeqTag csTag(m_nextCreditSeq++);
     CongestionTypeTag ctTag(GetTypeId().GetUid());
-    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag,csTag};
+    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag,csTag,m_creditPathTag};
 
 
     // Send out-of-band credit ACK packet
@@ -246,7 +246,15 @@ RoCEv2ExpressPass::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
                                      const uint32_t senderNextPSN)
 {
     NS_LOG_FUNCTION(this << packet << roce << senderNextPSN);
+    CreditRequestTag crTag;
+    PathTag pathTag;
+    NS_ASSERT(packet->PeekPacketTag(pathTag));
+    NS_ASSERT(packet->PeekPacketTag(crTag));
 
+    if(crTag.IsRequest()){
+        m_creditPathTag=pathTag;
+        m_creditPathTag.forward=false;
+    }
 
     RoCEv2CreditCc::UpdateStateWithOutbandPkt(packet, roce, senderNextPSN);
 }

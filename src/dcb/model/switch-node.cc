@@ -26,12 +26,13 @@ SwitchNode::GetTypeId()
                         .SetGroupName("Dcb")
                         .AddAttribute("RoutingMode",
                                       "The routing mode",
-                                      EnumValue(RoutingMode::PER_PACKET_SYMMETRIC),
+                                      EnumValue(RoutingMode::PER_FLOW_SYMMETRIC),
                                       MakeEnumAccessor(&SwitchNode::m_RoutingMode),
                                       MakeEnumChecker(
                                             RoutingMode::PER_PACKET, "PER_PACKET",
                                             RoutingMode::PER_FLOW_ECMP, "PER_FLOW_ECMP",
-                                            RoutingMode::PER_PACKET_SYMMETRIC, "PER_PACKET_SYMMETRIC"
+                                            RoutingMode::PER_PACKET_SYMMETRIC, "PER_PACKET_SYMMETRIC",
+                                            RoutingMode::PER_FLOW_SYMMETRIC, "PER_FLOW_SYMMETRIC"
                                                       ));
     return tid;
 }
@@ -157,7 +158,7 @@ void
 SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
 {
     uint32_t devIdx;
-
+    PathTag pathTag;
     switch (m_RoutingMode)
     {
     case PER_FLOW_ECMP:
@@ -167,7 +168,6 @@ SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
         devIdx = GetEgressDevIndexRandom(packet);
         break;
     case PER_PACKET_SYMMETRIC:
-    PathTag pathTag;
     if(packet->PeekPacketTag(pathTag))
     {
         if(pathTag.forward){
@@ -187,6 +187,29 @@ SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
         devIdx=GetEgressDevIndexRandom(packet);
     }//first hop
     break;
+    case PER_FLOW_SYMMETRIC:
+        if(packet->PeekPacketTag(pathTag))
+        {
+            if(pathTag.forward){
+                pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
+                packet->ReplacePacketTag(pathTag);
+                devIdx=GetEgressDevIndex(packet);
+            }
+            else{
+                devIdx=pathTag.PopInterfaceIndex();
+                packet->ReplacePacketTag(pathTag);
+            }
+        }
+        else{
+            pathTag.forward=true;
+            pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
+            packet->AddPacketTag(pathTag);
+            devIdx=GetEgressDevIndex(packet);
+        }//first hop
+        break;
+    default:
+        NS_FATAL_ERROR("SwitchNode::SendIpv4Packet: unknown routing mode " << m_RoutingMode);
+        break;
     }
     auto dev = GetDevice(devIdx);
     
