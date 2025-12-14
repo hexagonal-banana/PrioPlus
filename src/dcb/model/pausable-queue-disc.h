@@ -165,7 +165,8 @@ class PausableQueueDisc : public QueueDisc
      * \brief Default configuration, construct a strict priority m_priorityToInnerQueue.
      */
     void SetDefaultStrictPriority();
-     void SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits);
+    void SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits);
+    bool CheckRateLimit(uint32_t priority, uint32_t size);
   protected:
     Ptr<Node> m_node; //!< Node owning this NetDevice
 

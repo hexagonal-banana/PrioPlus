@@ -30,6 +30,7 @@
 #include "ns3/pfc-frame.h"
 #include "ns3/tag-buffer.h"
 #include "ns3/traffic-control-layer.h"
+#include "ns3/node.h"
 
 #include <vector>
 

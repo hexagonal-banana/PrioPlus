@@ -38,7 +38,7 @@
 #include "ns3/socket.h"
 #include "ns3/trace-source-accessor.h"
 #include "ns3/type-id.h"
-
+#include "ns3/node.h"
 #include <cmath>
 
 namespace ns3
@@ -183,6 +183,15 @@ DcbTrafficControl::Send(Ptr<NetDevice> device, Ptr<QueueDiscItem> item)
     uint32_t outPortIndex = device->GetIfIndex();
     uint8_t outQueuePriority = inQueuePriority;
 
+    Ptr<DcbNetDevice> outDev = DynamicCast<DcbNetDevice>(device);
+    bool ratelimitCheck = outDev->GetQueueDisc()->CheckRateLimit(outQueuePriority, pkt->GetSize());
+    if (!ratelimitCheck)
+    {
+        m_bufferOverflowTrace(pkt);
+        //std::cout<<"switch: "<<Simulator::GetContext()<<" drop pkt from port "<<inPortIndex<<" with priority: "<<(uint32_t)inQueuePriority<<std::endl;
+        return;
+    }
+    
     // Check enqueue admission
     bool success = m_buffer.InPacketProcess(inPortIndex,
                                             inQueuePriority,

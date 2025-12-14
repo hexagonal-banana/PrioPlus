@@ -248,6 +248,16 @@ PausableQueueDisc::DoEnqueue(Ptr<QueueDiscItem> item)
                                           << " but here we have " << priority);
 
     Ptr<PausableQueueDiscClass> qdiscClass = GetQueueDiscClass(priority);
+
+    if(m_tcEgress.IsNull()){
+        bool checkRatelimit=CheckRateLimit(priority,item->GetPacket()->GetSize());
+        if(!checkRatelimit)
+        {
+            DropBeforeEnqueue(item,"Rate limited");
+            return false;
+        }
+    }//only in host,no traffic control
+
     bool retval = qdiscClass->GetQueueDisc()->Enqueue(item);
     if (!retval)
     {
@@ -523,9 +533,7 @@ PausableQueueDisc::SetWdrrParameters(std::vector<uint32_t> priorities,
     // Constuct the m_priorityToInnerQueue
     for (uint32_t i = 0; i < priorities.size(); i++)
     {
-        // 去掉硬编码的leaky bucket创建逻辑
-        // m_priorityToLeakyBucket[priorities[i]] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
-        m_priorityToInnerQueue[priorities[i]].push_back(i);
+       m_priorityToInnerQueue[priorities[i]].push_back(i);
         Ptr<PausableQueueDiscClass> qdclass = GetQueueDiscClass(i);
         qdclass->SetWdrrParameters(quantum[i] * 1000, maxCredit * 1000);
     }
@@ -538,8 +546,6 @@ PausableQueueDisc::SetDefaultStrictPriority()
     for (uint32_t i = 0; i < GetNQueueDiscClasses(); i++)
     {
         m_priorityToInnerQueue[i].push_back(i);
-        // 去掉硬编码的leaky bucket创建逻辑
-        // m_priorityToLeakyBucket[i] = LeakyBucket(DataRate("5Gbps"), 10000,MakeCallback(&PausableQueueDisc::Run,this));
     }
 }
 
@@ -630,6 +636,25 @@ PausableQueueDisc::Stats::CollectAndCheck()
         vQueueStats.emplace_back(qd->GetStats());
     }
 }
+
+bool 
+PausableQueueDisc::CheckRateLimit(uint32_t priority, uint32_t size)
+{
+    NS_LOG_FUNCTION(this << priority << size);
+    
+    auto it = m_priorityToLeakyBucket.find(priority);
+    if (it == m_priorityToLeakyBucket.end())
+    {
+        return true;
+    }
+    
+
+    uint32_t threshold=50*8;
+    uint32_t totalSize = GetQueueDiscClass(priority)->GetQueueDisc()->GetNBytes();
+    
+    return totalSize+size<=threshold;
+}
+
 TypeId
 PausableQueueDiscClass::GetTypeId()
 {

@@ -5,7 +5,7 @@
 #include "ns3/ipv4-global-routing.h"
 #include "ns3/point-to-point-net-device.h"
 #include "ns3/traffic-control-layer.h"
-#include "ns3/random-variable-stream.h"  // 添加随机变量流头文件
+#include "ns3/random-variable-stream.h"
 
 namespace ns3
 {

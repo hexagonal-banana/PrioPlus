@@ -26,7 +26,12 @@ RoCEv2CreditCc::GetTypeId()
                           "Ratio for credit ACK sending rate (0~1).",
                           DoubleValue(1.0),
                           MakeDoubleAccessor(&RoCEv2CreditCc::m_creditRateRatio),
-                          MakeDoubleChecker<double>(0.0, 1.0));
+                          MakeDoubleChecker<double>(0.0, 1.0))
+            .AddAttribute("AckPacketSize",
+                          "Size of each credit ACK packet.",
+                          UintegerValue(68),
+                          MakeUintegerAccessor(&RoCEv2CreditCc::m_ackPacketSize),
+                          MakeUintegerChecker<uint32_t>(30, 1054));
     return tid;
 }
 
@@ -56,7 +61,7 @@ RoCEv2CreditCc::SetReady()
 {
     NS_LOG_FUNCTION(this);
     // send credit request and set timer for it
-    SendCreditRequest(m_sockState->GetBaseRtt() * 10); // Magic number for now
+    this->SendCreditRequest(m_sockState->GetBaseRtt() * 10); // Magic number for now
 }
 
 void
@@ -83,7 +88,7 @@ RoCEv2CreditCc::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
 
     if (crTag.IsRequest())
     {
-        StartCreditAckLoop(roce);
+        this->StartCreditAckLoop(roce);
     }
     else
     {
@@ -111,7 +116,10 @@ RoCEv2CreditCc::UpdateStateWithRcvACK(Ptr<Packet> ack,
      * make the right bound do not move.
      * 2. cwnd += 1: make the right bound move 1 packet.
      */
-    m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
+    int32_t cwndToSet = m_sockState->GetCwnd() + (1 - (int32_t)ackedPkts) * (int32_t)m_sockState->GetPacketSize();
+    NS_ASSERT_MSG(cwndToSet >= 0, "CWND to set is negative!");
+    m_sockState->SetCwnd(cwndToSet);
+    //m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
     m_sendPendingDataCb(); // Trigger sending pending data packets
 
     // Stop sending further credit requests once any ACK is received
@@ -120,7 +128,7 @@ RoCEv2CreditCc::UpdateStateWithRcvACK(Ptr<Packet> ack,
         m_cReqTimeOut.Cancel();
     }
 
-    // If all data are acknowledged, send a stop-credit message once
+    //If all data are acknowledged, send a stop-credit message once
     if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
         m_recvAckAfterFinish++ % 20 == 0)
     {
@@ -217,7 +225,7 @@ RoCEv2CreditCc::StartCreditAckLoop(const RoCEv2Header& roce)
     //                                                 roce.GetSrcQP(),
     //                                                 roce.GetPSN());
     // uint32_t ackBytes = ack->GetSize();
-    uint32_t ackBytes = 64; // XXX Magic number for now
+    uint32_t ackBytes = m_ackPacketSize; // XXX Magic number for now
     m_creditAckInterval = ComputeCreditAckInterval(ackBytes);
 
     // Kick off immediately
@@ -254,6 +262,18 @@ RoCEv2CreditCc::ComputeCreditAckInterval(uint32_t ackBytes) const
     return Seconds(intervalSeconds);
 }
 
+void RoCEv2CreditCc::UpdateCreditRate(DataRate creditRate)
+{
+    NS_LOG_FUNCTION(this << creditRate);
+    m_creditAckInterval=Seconds(m_ackPacketSize*8.0/double(creditRate.GetBitRate()));
+    // if(m_creditAckEvent.IsRunning())
+    // {
+    //     m_creditAckEvent.Cancel();
+
+    //     //Simulator.schedule() ? 
+    // }
+    //std::cout<<"host "<<Simulator::GetContext()<<" update credit rate to "<<creditRate.GetBitRate()<<" bps"<<std::endl;
+}
 void
 RoCEv2CreditCc::SendCreditAck(uint32_t psn)
 {
@@ -267,6 +287,7 @@ RoCEv2CreditCc::SendCreditAck(uint32_t psn)
     std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag};
 
     // Send out-of-band credit ACK packet
+    //NOTE: this psn is meaningless, sendOutbandPkt use the correct psn;
     bool success = m_sendOutbandPktCb(psn, false, packetTags);
     if (!success)
     {

@@ -478,6 +478,7 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
         return;
     }
 
+    m_rxState.ccOps->UpdateStateRecvData(packet);
     // Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(packet);
     // InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
 
@@ -872,7 +873,6 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId,
                        std::vector<RoCEv2CongestionOps::CcOpsConfigPair_t>& ccConfig)
 {
     NS_LOG_FUNCTION(this << congTypeId);
-
     SetCcOps(congTypeId);
 
     for (const auto& [name, value] : ccConfig)
@@ -1173,7 +1173,9 @@ RoCEv2Socket::SendOutbandPkt(uint32_t psn,
         // Generate standard ACK packet carrying the provided PSN
         packet = RoCEv2L4Protocol::GenerateACK(m_endPoint->GetLocalPort(),
                                                m_endPoint->GetPeerPort(),
-                                               m_rxState.rxBuffer->GetExpectedPsn());
+                                               m_rxState.rxBuffer->GetExpectedPsn(),
+                                            6+random()%9);
+        //TODO: modify payload size in ccops
     }
 
     for (const auto& tag : packetTags)

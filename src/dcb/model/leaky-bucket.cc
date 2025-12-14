@@ -25,11 +25,12 @@ namespace ns3
         : m_rate(rate),
           m_capacity(capacity),
           m_availableTokens(capacity),
-          m_RefillInterval(MicroSeconds(10)),
+          m_RefillInterval(NanoSeconds(30)),
           m_RefillCallback(cb)
     {
         NS_LOG_FUNCTION(this << rate << capacity);
         m_RefillAmount = static_cast<uint32_t>(m_rate.GetBitRate() * m_RefillInterval.GetSeconds() / 8);
+        NS_ASSERT(m_RefillAmount<=m_capacity);
         m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
         //m_refillEvent = Simulator::ScheduleNow(&LeakyBucket::Refill, this);
         //Refill();

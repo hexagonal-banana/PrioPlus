@@ -100,6 +100,9 @@ class RoCEv2CongestionOps : public Object
     {
     }
 
+    virtual void UpdateStateRecvData(Ptr<Packet> packet)
+    {
+    }
     /**
      * \brief When receiving a CNP, update the state if needed.
      *

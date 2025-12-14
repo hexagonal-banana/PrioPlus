@@ -98,31 +98,33 @@ class RoCEv2CreditCc : public RoCEv2CongestionOps
     }
     std::shared_ptr<Stats> m_stats; //!< Statistics
     
-    void StartCreditAckLoop(const RoCEv2Header& roce);
-    void SendCreditAck(uint32_t psn);
+    virtual void StartCreditAckLoop(const RoCEv2Header& roce);
+    virtual void SendCreditAck(uint32_t psn);
+    virtual void UpdateCreditRate(DataRate creditRate);
     Time ComputeCreditAckInterval(uint32_t ackBytes) const;
 
     /**
      * \brief Sender sends out CREDIT_REQUEST to request the receiver to send back the Credits.
      * \param rto: the RTO of the CREQ_TimeOut.
      */
-    void SendCreditRequest(Time rto);
+    virtual void SendCreditRequest(Time rto);
 
     /**
      * \brief Schedule a CREDIT_REQUEST packet.
      *
      * \param rto: the RTO of the CREQ_TimeOut.
      */
-    void ScheduleNextCreditReq(Time rto);
+    virtual void ScheduleNextCreditReq(Time rto);
 
-private:
-    void Init();
     EventId m_cReqTimeOut; //!< The event to send credit request again
     EventId m_creditAckEvent; //!< Repeating event to send credit ACKs
     Time m_creditAckInterval;
+    uint32_t m_ackPacketSize;
     double m_creditRateRatio;
     uint32_t m_recvAckAfterFinish{0};
 
+    private:
+    void Init();
 }; // class RoCEv2CreditCc
 
 } // namespace ns3
