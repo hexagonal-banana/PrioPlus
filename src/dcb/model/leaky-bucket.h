@@ -31,7 +31,8 @@ class LeakyBucket : public Object
     uint32_t m_availableTokens; // in bytes
 
     Time m_RefillInterval;
-    uint32_t m_RefillAmount; // in bytes
+    uint32_t m_RefillAmountbits; 
+    uint32_t m_RefillCompensatebits;
     EventId m_refillEvent;
 
     Callback<void> m_RefillCallback;

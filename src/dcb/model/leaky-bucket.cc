@@ -25,12 +25,13 @@ namespace ns3
         : m_rate(rate),
           m_capacity(capacity),
           m_availableTokens(capacity),
-          m_RefillInterval(NanoSeconds(500)),
+          m_RefillInterval(NanoSeconds(50)),
           m_RefillCallback(cb)
     {
         NS_LOG_FUNCTION(this << rate << capacity);
-        m_RefillAmount = static_cast<uint32_t>(m_rate.GetBitRate() * m_RefillInterval.GetSeconds() / 8);
-        NS_ASSERT(m_RefillAmount<=m_capacity);
+        m_RefillAmountbits = static_cast<uint32_t>(m_rate.GetBitRate() * m_RefillInterval.GetSeconds());
+        m_RefillCompensatebits=0;
+        NS_ASSERT(m_RefillAmountbits<=m_capacity*8);
         m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
         //m_refillEvent = Simulator::ScheduleNow(&LeakyBucket::Refill, this);
         //Refill();
@@ -54,7 +55,9 @@ namespace ns3
     {
         NS_LOG_FUNCTION(this);
         //std::cout << "Refill called, available tokens: " << m_availableTokens << std::endl;
-        m_availableTokens = std::min(m_availableTokens + m_RefillAmount, m_capacity);
+        m_RefillCompensatebits+=m_RefillAmountbits%8;
+        m_availableTokens = std::min(m_availableTokens + m_RefillAmountbits/8+m_RefillCompensatebits/8, m_capacity);
+        m_RefillCompensatebits%=8;
         if (m_refillEvent.IsExpired()&&!isFull())
         {
             m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
