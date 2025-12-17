@@ -224,6 +224,9 @@ CreateOneHost()
 static DcTopology::TopoNode
 CreateOneSwitch()
 {
+
+    SwitchNode::GetTypeId();
+    
     const Ptr<SwitchNode> sw = CreateObject<SwitchNode>();
 
     // Add protocol to switch

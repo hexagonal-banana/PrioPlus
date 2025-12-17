@@ -107,8 +107,8 @@ RoCEv2CreditCc::UpdateStateWithRcvACK(Ptr<Packet> ack,
 {
     // ACK works as Credit in this CC
     NS_LOG_FUNCTION(this << ack << roce << senderNextPSN);
-    uint32_t ackedPkts =
-        std::max((uint32_t)0, roce.GetPSN() - m_sockState->GetTxBuffer()->GetFrontPsn());
+    int32_t ackedPkts =
+        std::max((int32_t)0, (int32_t)roce.GetPSN() - (int32_t)m_sockState->GetTxBuffer()->GetFrontPsn());
     /**
      * When receiving a credit, we want the right bound of the window +1, strictly.
      * To achieve this, we do these operations:
@@ -116,7 +116,7 @@ RoCEv2CreditCc::UpdateStateWithRcvACK(Ptr<Packet> ack,
      * make the right bound do not move.
      * 2. cwnd += 1: make the right bound move 1 packet.
      */
-    int32_t cwndToSet = m_sockState->GetCwnd() + (1 - (int32_t)ackedPkts) * (int32_t)m_sockState->GetPacketSize();
+    int32_t cwndToSet = m_sockState->GetCwnd() + ((int32_t)1 - ackedPkts) * (int32_t)m_sockState->GetPacketSize();
     NS_ASSERT_MSG(cwndToSet >= 0, "CWND to set is negative!");
     m_sockState->SetCwnd(cwndToSet);
     //m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());

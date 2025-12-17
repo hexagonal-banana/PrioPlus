@@ -100,7 +100,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
-                "config/demos/cc-tree4/cc-expresspass-1to1-symmetric.json"
+                "config/credit-spary/cc-creditspray-4to4.json"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

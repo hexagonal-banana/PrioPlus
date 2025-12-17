@@ -649,10 +649,9 @@ PausableQueueDisc::CheckRateLimit(uint32_t priority, uint32_t size)
     }
     
 
-    uint32_t threshold=50*8;
-    uint32_t totalSize = GetQueueDiscClass(priority)->GetQueueDisc()->GetNBytes();
-    
-    return totalSize+size<=threshold;
+    uint32_t threshold=8;
+    uint32_t totalPacket = GetQueueDiscClass(priority)->GetQueueDisc()->GetNPackets();
+    return totalPacket+1<=threshold;
 }
 
 TypeId

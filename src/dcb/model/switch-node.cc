@@ -20,13 +20,13 @@ uint64_t SwitchNode::m_randStream = 0;
 TypeId
 SwitchNode::GetTypeId()
 {
-    static TypeId tid = TypeId("SwitchNode").
+    static TypeId tid = TypeId("ns3::SwitchNode").
                         SetParent<Node>()
                         .AddConstructor<SwitchNode>()
                         .SetGroupName("Dcb")
                         .AddAttribute("RoutingMode",
                                       "The routing mode",
-                                      EnumValue(RoutingMode::PER_FLOW_SYMMETRIC),
+                                      EnumValue(RoutingMode::PER_PACKET_SYMMETRIC),
                                       MakeEnumAccessor(&SwitchNode::m_RoutingMode),
                                       MakeEnumChecker(
                                             RoutingMode::PER_PACKET, "PER_PACKET",

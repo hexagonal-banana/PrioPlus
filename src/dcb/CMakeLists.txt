@@ -42,6 +42,7 @@ build_lib(
 	  model/switch-node.cc
 	  model/leaky-bucket.cc
 	  model/rocev2-expresspass.cc
+	  model/rocev2-credit-spray.cc
 	  utils/hpcc-header.cc
 	  utils/poseidon-header.cc
 	  utils/pfc-frame.cc
@@ -88,6 +89,7 @@ build_lib(
 	  model/switch-node.h
 	  model/leaky-bucket.h
 	  model/rocev2-expresspass.h
+	  model/rocev2-credit-spray.h
 	  utils/hpcc-header.h
 	  utils/poseidon-header.h
 	  utils/pfc-frame.h
