@@ -100,7 +100,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
-                "config/credit-spary/cc-creditspray-1to1-fat.json"
+                "config/credit-spary/cc-creditspray-4to4.json"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
