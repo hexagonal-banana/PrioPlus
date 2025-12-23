@@ -274,7 +274,7 @@ RoCEv2ExpressPass::StartCreditAckLoop(const RoCEv2Header& roce)
     //m_rateControlEvent=Simulator::Schedule(m_rateControlInterval,&RoCEv2ExpressPass::RateControl,this);
 
     //RoCEv2CreditCc::StartCreditAckLoop(roce);
-    if(!m_creditAckEvent.IsRunning()){
+    if(m_creditAckEvent.IsRunning()){
         m_creditAckEvent.Cancel();
     }
     SendCreditAck(roce.GetPSN());

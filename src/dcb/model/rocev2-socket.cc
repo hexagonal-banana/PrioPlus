@@ -527,7 +527,7 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
                                0);
         }
     }
-    else
+    else if (m_retxMode != RoCEv2RetxMode::NONE)
     {
         if (m_retxMode == RoCEv2RetxMode::GBN && m_rxState.ePsnAdvancedAfterNack == false)
         {

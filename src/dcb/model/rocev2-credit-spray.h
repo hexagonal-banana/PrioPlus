@@ -77,6 +77,7 @@ namespace ns3{
     std::shared_ptr<Stats> m_stats; //!< Statistics
     void Init();
     void RateControl(double lossRatio);
+
     uint32_t m_creditPrio;
     uint32_t m_dataPrio;
     DataRate m_creditRate;
@@ -88,11 +89,12 @@ namespace ns3{
     double m_targetLossRatio;
 
     
-    uint32_t m_creditLossCount;
+    //uint32_t m_creditLossCount;
     std::queue<uint64_t> m_senderCreditSeqList;
 
     uint64_t m_nextCreditSeq;
-    uint64_t m_lastRecvCreditSeq;
+    //uint64_t m_lastRecvCreditSeq;
+    uint64_t m_recvDataCount;
     uint64_t m_lastUpadateRateSeq;
     uint64_t m_nextUpdateSeq;
     RateControlLastAction m_rateControlLastAction;

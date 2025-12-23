@@ -45,7 +45,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
                                               MakeDoubleChecker<double>(0.0, 1.0))
                                 .AddAttribute("TargetLossRate",
                                               "The target loss rate",
-                                              DoubleValue(0.1),
+                                              DoubleValue(0.30),
                                               MakeDoubleAccessor(&RoCEv2CreditSpray::m_targetLossRatio),
                                               MakeDoubleChecker<double>(0.0, 1.0))
                                 .AddAttribute("InitAggressiveRatio",
@@ -83,6 +83,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
     RoCEv2CreditSpray::~RoCEv2CreditSpray()
     {
         NS_LOG_FUNCTION(this);
+
     }
 
     void
@@ -91,13 +92,13 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         NS_LOG_FUNCTION(this);
         RegisterCongestionType(GetTypeId());
 
-        m_senderCreditSeqList=std::queue<uint64_t>();
-        m_rateControlLastAction=RATE_CONTROL_LAST_ACTION_NONE;
-        m_creditLossCount=0;
+        //m_creditLossCount=0;
         m_nextCreditSeq=1;
-        m_lastRecvCreditSeq=0;
+        //m_lastRecvCreditSeq=0;
+        m_recvDataCount=0;
         m_lastUpadateRateSeq=0;
         m_nextUpdateSeq=0;
+        m_rateControlLastAction=RATE_CONTROL_LAST_ACTION_NONE;
     }
 
     void
@@ -105,11 +106,10 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
     {
         NS_LOG_FUNCTION(this << packet);
 
-        
-        // NS_ASSERT(!m_senderCreditSeqList.empty());
-        // uint64_t useSeq=m_senderCreditSeqList.front();
-        // m_senderCreditSeqList.pop();
-        // packet->AddPacketTag(CreditSeqTag(useSeq));
+        NS_ASSERT(!m_senderCreditSeqList.empty());
+        uint64_t useSeq=m_senderCreditSeqList.front();
+        m_senderCreditSeqList.pop();
+        packet->AddPacketTag(CreditSeqTag(useSeq));
         
         NS_ASSERT(!m_senderPathTagList.empty());
         PathTag pathTag=m_senderPathTagList.front();
@@ -130,11 +130,11 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         PathTag pathTag;
         NS_ASSERT(ack->PeekPacketTag(pathTag));
         NS_ASSERT(pathTag.forward);
-        //NS_ASSERT(ack->PeekPacketTag(csTag));
+        NS_ASSERT(ack->PeekPacketTag(csTag));
 
         pathTag.forward=false;
         m_senderPathTagList.push(PathTag(pathTag));
-        //m_senderCreditSeqList.push(csTag.GetSeq());
+        m_senderCreditSeqList.push(csTag.GetSeq());
 
         RoCEv2CreditCc::UpdateStateWithRcvACK(ack, roce, senderNextPSN);
     }
@@ -279,10 +279,9 @@ RoCEv2CreditSpray::StartCreditAckLoop(const RoCEv2Header& roce)
     //m_rateControlInterval=m_sockState->GetBaseRtt(); baseRTT=0???
     NS_LOG_FUNCTION(this << roce);
     UpdateCreditRate(m_creditRate);
-    //m_rateControlEvent=Simulator::Schedule(m_rateControlInterval,&RoCEv2CreditSpray::RateControl,this);
 
     //RoCEv2CreditCc::StartCreditAckLoop(roce);
-    if(!m_creditAckEvent.IsRunning()){
+    if(m_creditAckEvent.IsRunning()){
         m_creditAckEvent.Cancel();
     }
     SendCreditAck(roce.GetPSN());
@@ -292,25 +291,33 @@ void
 RoCEv2CreditSpray::UpdateStateRecvData(Ptr<Packet> packet)
 {
     NS_LOG_FUNCTION(this << packet);
-    //CreditSeqTag csTag;
-    //NS_ASSERT(packet->PeekPacketTag(csTag));
-    //uint64_t pktSeq=csTag.GetSeq();
-    // NS_ASSERT(pktSeq>m_lastRecvCreditSeq);
-    // m_creditLossCount+=pktSeq-m_lastRecvCreditSeq-1;
-    // m_lastRecvCreditSeq=pktSeq;
 
-    // if(pktSeq>=m_nextUpdateSeq){
-    //     if(m_nextUpdateSeq!=0){
-    //     uint64_t sendCredit=pktSeq-m_lastUpadateRateSeq;
-    //     m_lastUpadateRateSeq=pktSeq;
-    //     double lossRatio = static_cast<double>(m_creditLossCount) / sendCredit;
-    //     m_creditLossCount=0;
-    //     RateControl(lossRatio);
-    //     }
-    //     m_nextUpdateSeq=m_nextCreditSeq;
-    // }
+    CreditSeqTag csTag;
+    NS_ASSERT(packet->PeekPacketTag(csTag));
+    uint64_t pktSeq=csTag.GetSeq();
+    //NS_ASSERT(pktSeq>m_lastRecvCreditSeq);
+    //m_creditLossCount+=pktSeq-m_lastRecvCreditSeq-1;
+    //m_lastRecvCreditSeq=pktSeq;
+    if(pktSeq>m_lastUpadateRateSeq){
+        m_recvDataCount++;
+    }
+    if(pktSeq>=m_nextUpdateSeq){
+        if(m_nextUpdateSeq!=0){
+        uint64_t sendCredit=pktSeq-m_lastUpadateRateSeq;
+        m_lastUpadateRateSeq=pktSeq;
+        double lossRatio = static_cast<double>(sendCredit-m_recvDataCount) / sendCredit;
+        //m_creditLossCount=0;
+        //NS_ASSERT(lossRatio<1&&lossRatio>=0);
+        m_recvDataCount=0;
+        RateControl(lossRatio);
+        }
+        m_nextUpdateSeq=m_nextCreditSeq;
+    }
 
 }
+
+
+
 // CreditSeqTag implementation
 TypeId
 RoCEv2CreditSpray::CreditSeqTag::GetTypeId()

@@ -11,13 +11,14 @@ import argparse
 import os
 import numpy as np
 
-def plot_throughput_scatter(json_file_path):
+def plot_throughput_scatter(json_file_path, target_switch_id=None):
     """
     Plot queue throughput scatter plot - one figure per queue
     Add vertical lines for flow start and end times
     
     Args:
         json_file_path (str): JSON file path
+        target_switch_id (int): Optional switch ID to filter by
     """
     # Read JSON file
     try:
@@ -62,6 +63,10 @@ def plot_throughput_scatter(json_file_path):
     # Iterate through all switches
     for switch_stat in data['switchStatistics']:
         switch_id = switch_stat['switchId']
+        
+        # If target_switch_id is specified and doesn't match current switch_id, skip
+        if target_switch_id is not None and switch_id != target_switch_id:
+            continue
         
         # Iterate through all ports
         for port_stat in switch_stat['portStats']:
@@ -152,6 +157,7 @@ def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Plot throughput scatter plot for each queue in JSON file with flow timing lines')
     parser.add_argument('json_file', help='JSON file path')
+    parser.add_argument('switch_id', nargs='?', type=int, help='Optional switch ID to filter by')
     
     args = parser.parse_args()
     
@@ -161,7 +167,7 @@ def main():
         return
     
     # Plot graph
-    plot_throughput_scatter(args.json_file)
+    plot_throughput_scatter(args.json_file, args.switch_id)
 
 if __name__ == "__main__":
     main()
