@@ -394,7 +394,7 @@ Ipv4GlobalRouting::RemoveRoute(uint32_t index)
             NS_LOG_LOGIC("Done removing network route "
                          << index << "; network route remaining size = " << m_networkRoutes.size());
             return;
-        }
+}
         tmp++;
     }
     NS_ASSERT(false);
@@ -693,11 +693,15 @@ Ipv4GlobalRouting::UdpEcmp(const Ipv4Header& header,
 
 PathTag::PathTag()
 {
+    forward = false;
+    m_path_length = 0;
 }
 
 PathTag::~PathTag()
 {
 }
+
+
 
 TypeId
 PathTag::GetTypeId(){

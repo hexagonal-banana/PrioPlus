@@ -91,14 +91,24 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
     {
         NS_LOG_FUNCTION(this);
         RegisterCongestionType(GetTypeId());
-
-        //m_creditLossCount=0;
-        m_nextCreditSeq=1;
-        //m_lastRecvCreditSeq=0;
-        m_recvDataCount=0;
-        m_lastUpadateRateSeq=0;
-        m_nextUpdateSeq=0;
-        m_rateControlLastAction=RATE_CONTROL_LAST_ACTION_NONE;
+    
+        m_senderCreditSeqList = std::queue<uint64_t>();
+        m_nextCreditSeq = 1;
+        m_recvDataCount = 0;
+        m_lastUpadateRateSeq = 0;
+        m_nextUpdateSeq = 0;
+        m_rateControlLastAction = RATE_CONTROL_LAST_ACTION_NONE;
+        
+        m_senderPathTagList=std::queue<PathTag>();
+        m_creditPrio = 0;
+        m_dataPrio = 0x0A;
+        m_creditRate = DataRate();
+        m_maxCreditRate = DataRate();
+        m_initCreditRateRatio = 1.0;
+        m_aggressiveRatio = 0.5;
+        m_maxAggressiveRatio = 0.5;
+        m_minAggressiveRatio = 0.01;
+        m_targetLossRatio = 0.30;
     }
 
     void
