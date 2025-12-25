@@ -3,7 +3,7 @@
         "topo": "config/topo/fat4.txt"
     },
     "outputFile": {
-        "resultFile": "output/*-8.json"
+        "resultFile": "output/*-1.json"
     },
     "runtimeConfig": {
         "seed": 8259,
@@ -68,7 +68,7 @@
                     "MaxSize": "10MiB"
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "rate": "2.9Gbps", "burstSize": 1000}
+                    {"priority": 0, "rate": "3.0Gbps", "burstSize": 1000}
                 ]                 
             },
             {

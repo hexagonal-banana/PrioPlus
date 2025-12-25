@@ -127,6 +127,9 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         m_senderPathTagList.pop();
         packet->AddPacketTag(PathTag(pathTag));
 
+        SocketIpTosTag ipTosTag;
+        ipTosTag.SetTos(m_dataPrio);
+        packet->AddPacketTag(ipTosTag);
         RoCEv2CreditCc::UpdateStateSend(packet);
     }
 
@@ -148,7 +151,43 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         m_senderPathTagList.push(PathTag(pathTag));
         m_senderCreditSeqList.push(csTag.GetSeq());
 
-        RoCEv2CreditCc::UpdateStateWithRcvACK(ack, roce, senderNextPSN);
+        int32_t ackedPkts =
+        std::max((int32_t)0, (int32_t)roce.GetPSN() - (int32_t)m_sockState->GetTxBuffer()->GetFrontPsn());
+    /**
+     * When receiving a credit, we want the right bound of the window +1, strictly.
+     * To achieve this, we do these operations:
+     * 1. cwnd -= ackedPkts: the ackedPkts is how many packets the left bound moved. We minus it to
+     * make the right bound do not move.
+     * 2. cwnd += 1: make the right bound move 1 packet.
+     */
+    int32_t cwndToSet = m_sockState->GetCwnd() + ((int32_t)1 - ackedPkts) * (int32_t)m_sockState->GetPacketSize();
+    NS_ASSERT_MSG(cwndToSet >= 0, "CWND to set is negative!");
+    m_sockState->SetCwnd(cwndToSet);
+    //m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
+    m_sendPendingDataCb(); // Trigger sending pending data packets
+
+    // Stop sending further credit requests once any ACK is received
+    if (m_cReqTimeOut.IsRunning())
+    {
+        m_cReqTimeOut.Cancel();
+    }
+
+    //If all data are acknowledged, send a stop-credit message once
+    if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
+        m_recvAckAfterFinish++ % 20 == 0)
+    {
+        CongestionTypeTag ctTag(GetTypeId().GetUid());
+        CreditRequestTag crTag(false);
+        SocketIpTosTag ipTosTag;
+        ipTosTag.SetTos(m_dataPrio);
+        std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag,ipTosTag};
+        bool success =
+            m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
+        if (!success)
+        {
+            NS_LOG_WARN("Send stop Credit ACK signal failed!");
+        }
+    }
     }
     void
     RoCEv2CreditSpray::SendCreditRequest(Time rto)
@@ -172,9 +211,10 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
 
     CongestionTypeTag ctTag(GetTypeId().GetUid());
     CreditRequestTag crTag(true);
+    SocketIpTosTag ipTosTag;
+    ipTosTag.SetTos(m_dataPrio);
 
-
-    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag};
+    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag,ipTosTag};
 
     // Send out-of-band credit request packet
     bool success = m_sendOutbandPktCb(0, true, packetTags);
@@ -203,7 +243,9 @@ RoCEv2CreditSpray::SendCreditAck(uint32_t psn)
 
     CreditSeqTag csTag(m_nextCreditSeq++);
     CongestionTypeTag ctTag(GetTypeId().GetUid());
-    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag,csTag};
+    SocketIpTosTag ipTosTag;
+    ipTosTag.SetTos(m_creditPrio);
+    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag,csTag,ipTosTag};
 
 
     // Send out-of-band credit ACK packet
