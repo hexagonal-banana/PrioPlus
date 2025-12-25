@@ -138,9 +138,11 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
 
         CreditSeqTag csTag;
         PathTag pathTag;
-        NS_ASSERT(ack->PeekPacketTag(pathTag));
+        bool hasPathTag = ack->PeekPacketTag(pathTag);
+        NS_ASSERT(hasPathTag);
         NS_ASSERT(pathTag.forward);
-        NS_ASSERT(ack->PeekPacketTag(csTag));
+        bool hasCsTag = ack->PeekPacketTag(csTag);
+        NS_ASSERT(hasCsTag);
 
         pathTag.forward=false;
         m_senderPathTagList.push(PathTag(pathTag));
@@ -270,8 +272,10 @@ RoCEv2CreditSpray::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
     NS_LOG_FUNCTION(this << packet << roce << senderNextPSN);
     CreditRequestTag crTag;
     PathTag pathTag;
-    NS_ASSERT(packet->PeekPacketTag(pathTag));
-    NS_ASSERT(packet->PeekPacketTag(crTag));
+    bool hasPathTag = packet->PeekPacketTag(pathTag);
+    bool hasCrTag = packet->PeekPacketTag(crTag);
+    NS_ASSERT(hasPathTag);
+    NS_ASSERT(hasCrTag);
 
 
     RoCEv2CreditCc::UpdateStateWithOutbandPkt(packet, roce, senderNextPSN);
@@ -303,7 +307,8 @@ RoCEv2CreditSpray::UpdateStateRecvData(Ptr<Packet> packet)
     NS_LOG_FUNCTION(this << packet);
 
     CreditSeqTag csTag;
-    NS_ASSERT(packet->PeekPacketTag(csTag));
+    bool hasTag = packet->PeekPacketTag(csTag);
+    NS_ASSERT(hasTag);
     uint64_t pktSeq=csTag.GetSeq();
     //NS_ASSERT(pktSeq>m_lastRecvCreditSeq);
     //m_creditLossCount+=pktSeq-m_lastRecvCreditSeq-1;

@@ -190,17 +190,20 @@ SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
     case PER_FLOW_SYMMETRIC:
         if(packet->PeekPacketTag(pathTag))
         {
+
             if(pathTag.forward){
                 pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
                 packet->ReplacePacketTag(pathTag);
                 devIdx=GetEgressDevIndex(packet);
             }
             else{
+
                 devIdx=pathTag.PopInterfaceIndex();
                 packet->ReplacePacketTag(pathTag);
             }
         }
         else{
+            
             pathTag.forward=true;
             pathTag.AppendInterfaceIndex(inDev->GetIfIndex());
             packet->AddPacketTag(pathTag);

@@ -695,6 +695,14 @@ PathTag::PathTag()
 {
     forward = false;
     m_path_length = 0;
+    m_path_device_interface_indexes=std::vector<uint32_t>();
+}
+
+PathTag::PathTag(const PathTag &tag)
+{
+    forward = tag.forward;
+    m_path_length = tag.m_path_length;
+    m_path_device_interface_indexes = tag.m_path_device_interface_indexes;
 }
 
 PathTag::~PathTag()
@@ -734,6 +742,7 @@ PathTag::Serialize(TagBuffer i) const{
 
 void
 PathTag::Deserialize(TagBuffer i){
+    
     m_path_device_interface_indexes.clear();
     forward = i.ReadU8() != 0;
     m_path_length = i.ReadU32();

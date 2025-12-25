@@ -313,6 +313,7 @@ class PathTag: public Tag
 {
     public:
         PathTag();
+        PathTag(const PathTag &tag);
         ~PathTag() override;
         static TypeId GetTypeId();
         virtual TypeId GetInstanceTypeId() const override;
@@ -324,7 +325,7 @@ class PathTag: public Tag
         void AppendInterfaceIndex(uint32_t index);
         uint32_t PopInterfaceIndex();
         bool forward;//switch append path when forward, otherwise, pop path to select next hop
-    private:
+    
     std::vector<uint32_t> m_path_device_interface_indexes;
     uint32_t m_path_length;
 };

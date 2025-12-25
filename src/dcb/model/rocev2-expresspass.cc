@@ -131,7 +131,8 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
         NS_LOG_FUNCTION(this << ack << roce << senderNextPSN);
 
         CreditSeqTag csTag;
-        NS_ASSERT(ack->PeekPacketTag(csTag));
+        bool hasTag = ack->PeekPacketTag(csTag);
+        NS_ASSERT(hasTag);
         m_senderCreditSeqList.push(csTag.GetSeq());
 
         RoCEv2CreditCc::UpdateStateWithRcvACK(ack, roce, senderNextPSN);
@@ -142,7 +143,6 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
     NS_LOG_FUNCTION(this << rto);
     // To stop sending, we set the cwnd to 0
     m_sockState->SetCwnd(0);
-
     // Check if a Req is just sent
     if (m_cReqTimeOut.IsRunning())
     {
@@ -258,11 +258,12 @@ RoCEv2ExpressPass::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
     NS_LOG_FUNCTION(this << packet << roce << senderNextPSN);
     CreditRequestTag crTag;
     PathTag pathTag;
-    NS_ASSERT(packet->PeekPacketTag(pathTag));
-    NS_ASSERT(packet->PeekPacketTag(crTag));
-
+    bool hasPathTag = packet->PeekPacketTag(pathTag);
+    bool hasCrTag = packet->PeekPacketTag(crTag);
+    NS_ASSERT(hasPathTag);
+    NS_ASSERT(hasCrTag);
     if(crTag.IsRequest()){
-        m_creditPathTag=pathTag;
+        m_creditPathTag=PathTag(pathTag);
         m_creditPathTag.forward=false;
     }
 
@@ -295,7 +296,8 @@ RoCEv2ExpressPass::UpdateStateRecvData(Ptr<Packet> packet)
 {
     NS_LOG_FUNCTION(this << packet);
     CreditSeqTag csTag;
-    NS_ASSERT(packet->PeekPacketTag(csTag));
+    bool hasTag = packet->PeekPacketTag(csTag);
+    NS_ASSERT(hasTag);
     uint64_t pktSeq=csTag.GetSeq();
     NS_ASSERT(pktSeq>m_lastRecvCreditSeq);
     m_creditLossCount+=pktSeq-m_lastRecvCreditSeq-1;
