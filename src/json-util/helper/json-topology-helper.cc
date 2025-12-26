@@ -124,7 +124,7 @@ ConstructFcHelper(const boost::json::object& fcConfig)
 
     // Parse and set priority rate limits if they exist
     JsonCallIfExistsArray(fcConfig, "prioRateLimits", [fcHelper](const boost::json::array& rateLimitsArray) {
-        std::vector<std::tuple<uint32_t, std::string, uint32_t>> rateLimits;
+        std::vector<std::tuple<uint32_t, double, uint32_t>> rateLimits;
         for (const auto& rateLimitObj : rateLimitsArray)
         {
             if (!rateLimitObj.is_object())
@@ -133,9 +133,9 @@ ConstructFcHelper(const boost::json::object& fcConfig)
             }
             const auto& obj = rateLimitObj.get_object();
             uint32_t priority = JsonGetInt64OrRaise(obj, "priority", "priority is required in prioRateLimits");
-            std::string rate = JsonGetStringOrRaise(obj, "rate", "rate is required in prioRateLimits");
+            double ratio = JsonGetDoubleOrRaise(obj, "ratio", "ratio is required in prioRateLimits");
             uint32_t burstSize = JsonGetInt64OrRaise(obj, "burstSize", "burstSize is required in prioRateLimits");
-            rateLimits.emplace_back(priority, rate, burstSize);
+            rateLimits.emplace_back(priority, ratio, burstSize);
         }
         fcHelper->SetPrioRateLimit(rateLimits);
     });

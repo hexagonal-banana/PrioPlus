@@ -80,7 +80,7 @@ class DcbFcHelper
     void SetQuantum(std::vector<uint32_t>&& quantum);
     void SetMaxCredit(uint32_t maxCredit);
 
-    void SetPrioRateLimit(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits);
+    void SetPrioRateLimit(const std::vector<std::tuple<uint32_t, double, uint32_t>>& rateLimits);
 
   private:
     ObjectFactory m_tcFactory;
@@ -99,7 +99,7 @@ class DcbFcHelper
     std::vector<uint32_t> m_quantum; // in KB
     uint32_t m_maxCredit; // in KB
 
-    std::vector<std::tuple<uint32_t, std::string, uint32_t>> m_prioRateLimits;
+    std::vector<std::tuple<uint32_t, double, uint32_t>> m_prioRateLimits;
 }; // class DcbFcHelper
 
 } // namespace ns3

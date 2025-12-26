@@ -529,7 +529,7 @@ DcbFcHelper::SetMaxCredit(uint32_t maxCredit)
 }
 
 void
-DcbFcHelper::SetPrioRateLimit(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits)
+DcbFcHelper::SetPrioRateLimit(const std::vector<std::tuple<uint32_t, double, uint32_t>>& rateLimits)
 {
     m_prioRateLimits = rateLimits;
 }
