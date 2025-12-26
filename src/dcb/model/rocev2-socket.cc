@@ -65,6 +65,8 @@ RoCEv2Socket::GetTypeId()
                                           "GBN",
                                           RoCEv2RetxMode::IRN,
                                           "IRN",
+                                          RoCEv2RetxMode::RTO_ONLY,
+                                          "RTO_ONLY",
                                           RoCEv2RetxMode::NONE,
                                           "None"))
             .AddAttribute("AckMode",
@@ -443,6 +445,10 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
         {
             // Do nothing
         }
+        else if (m_retxMode == RTO_ONLY)
+        {
+            // Do nothing
+        }
         break;
     }
     default: {
@@ -527,7 +533,7 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
                                0);
         }
     }
-    else if (m_retxMode != RoCEv2RetxMode::NONE)
+    else if (m_retxMode != RoCEv2RetxMode::NONE && m_retxMode != RoCEv2RetxMode::RTO_ONLY)
     {
         if (m_retxMode == RoCEv2RetxMode::GBN && m_rxState.ePsnAdvancedAfterNack == false)
         {
@@ -1075,6 +1081,11 @@ RoCEv2Socket::RetransmissionTimeout()
         // m_txBuffer.RetransmitRange(m_txBuffer.GetFrontPsn(), m_txBuffer.GetMaxAckedPsn()-1);
         m_txBuffer.RetransmitFrom(m_txBuffer.GetFrontPsn());
     }
+    else if (m_retxMode == RoCEv2RetxMode::RTO_ONLY)
+    {
+        // Retransmit the first unacked packet
+        m_txBuffer.RetransmitFrom(m_txBuffer.GetFrontPsn());
+    }
     else if (m_retxMode == RoCEv2RetxMode::NONE)
     {
         NS_LOG_WARN("Retransmission mode is NONE, skipping retransmission.");
@@ -1114,6 +1125,10 @@ RoCEv2Socket::GetRTOTime()
         }
     }
     else if (m_retxMode == RoCEv2RetxMode::NONE)
+    {
+        return m_rto;
+    }
+    else if (m_retxMode == RoCEv2RetxMode::RTO_ONLY)
     {
         return m_rto;
     }
@@ -1763,6 +1778,11 @@ DcbRxBuffer::Add(uint32_t psn, Ipv4Header ipv4, RoCEv2Header roce, Ptr<Packet> p
     {
         m_buffer.emplace(psn, DcbRxBufferItem(ipv4, roce, payload));
     }
+    else if (m_retxMode == RoCEv2RetxMode::RTO_ONLY)
+    {
+        m_buffer.emplace(psn, DcbRxBufferItem(ipv4, roce, payload));
+    }
+    
     // Check and forward the in order packets
     while (m_buffer.find(m_expectedPsn) != m_buffer.end())
     {

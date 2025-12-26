@@ -46,7 +46,8 @@ enum RoCEv2RetxMode : uint8_t
 {
     GBN, // Go Back N
     IRN, // Improved RoCE NIC, see Revisiting Network Support for RDMA by Mittal et al.
-    NONE // No retransmission, for packet spraying only.
+    RTO_ONLY, // Retransmit only on RTO timeout.
+    NONE // No retransmission,
 };
 
 enum RoCEv2AckMode : uint8_t

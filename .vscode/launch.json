@@ -98,7 +98,7 @@
             "name": "(gdb) Launch rdma-simulator debuger",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator",
+            "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
                 "config/credit-spary/cc-creditspray-4to4.json"
             ],

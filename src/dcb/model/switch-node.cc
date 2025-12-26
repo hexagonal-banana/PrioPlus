@@ -156,7 +156,7 @@ uint32_t SwitchNode::GetEgressDevIndexRandom(Ptr<Packet> packet)
 }
 void
 SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
-{
+{   
     uint32_t devIdx;
     PathTag pathTag;
     switch (m_RoutingMode)
