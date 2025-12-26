@@ -7,3 +7,9 @@
 !demos/*
 !credit-spary/*
 !prioplus-eurosys25/*
+!fat320-cachef-load5/*
+!fat320-cachef-load8/*
+!fat320-incastmix-hadoop-load4.5-incast32-interval0.0375/*
+!fat320-incastmix-hadoop-load7-incast32-interval0.0375/*
+!fat320-websearch-load5/*
+!fat320-websearch-load8/*

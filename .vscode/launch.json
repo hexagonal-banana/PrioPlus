@@ -100,7 +100,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator",
             "args": [
-                "config/credit-spary/cc-creditspray-4to4.json"
+                "config/fat320-cachef-load8/ExpressPass.json"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
