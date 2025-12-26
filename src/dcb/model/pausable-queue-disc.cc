@@ -20,6 +20,7 @@
 #include "pausable-queue-disc.h"
 
 #include "dcb-traffic-control.h"
+#include "dcb-net-device.h"
 #include "fifo-queue-disc-ecn.h"
 #include "rocev2-socket.h"
 
@@ -555,7 +556,11 @@ PausableQueueDisc::SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, 
 {
     NS_LOG_FUNCTION(this);
     
+    Ptr<NetDevice> baseDevice = m_node->GetDevice(m_portIndex);
+    Ptr<DcbNetDevice> dev = DynamicCast<DcbNetDevice>(baseDevice);    
+    
     // 首先清空现有的限速配置
+    m_priorityToInnerQueue.clear();
     m_priorityToLeakyBucket.clear();
     
     // 根据传入的配置设置限速

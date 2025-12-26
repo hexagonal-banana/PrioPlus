@@ -161,7 +161,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
 
     //If all data are acknowledged, send a stop-credit message once
     if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
-        m_recvAckAfterFinish++ % 20 == 0)
+        m_recvAckAfterFinish++ % 2000 == 0)
     {
         CongestionTypeTag ctTag(GetTypeId().GetUid());
         CreditRequestTag crTag(false);
