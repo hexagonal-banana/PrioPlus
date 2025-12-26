@@ -269,7 +269,6 @@ PausableQueueDisc::DoEnqueue(Ptr<QueueDiscItem> item)
     m_traceEnqueueWithId(item, GetNodeAndPortId(), priority);
     return retval;
 }
-
 Ptr<QueueDiscItem>
 PausableQueueDisc::DoDequeue()
 {
@@ -552,31 +551,38 @@ PausableQueueDisc::SetDefaultStrictPriority()
 
 // 添加设置优先级限速的方法
 void
-PausableQueueDisc::SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, std::string, uint32_t>>& rateLimits)
+PausableQueueDisc::SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, double, uint32_t>>& rateLimits)
 {
     NS_LOG_FUNCTION(this);
     
+<<<<<<< HEAD
     Ptr<NetDevice> baseDevice = m_node->GetDevice(m_portIndex);
     Ptr<DcbNetDevice> dev = DynamicCast<DcbNetDevice>(baseDevice);    
     
     // 首先清空现有的限速配置
     m_priorityToInnerQueue.clear();
+=======
+    Ptr<DcbNetDevice> dcbNetDev = DynamicCast<DcbNetDevice>(m_node->GetDevice(m_portIndex));
+    DataRate lineRate = dcbNetDev->GetDataRate();
+
+>>>>>>> 33e417b7f35ed96f08c9823f4f1959f36bd58f33
     m_priorityToLeakyBucket.clear();
     
-    // 根据传入的配置设置限速
+
     for (const auto& rateLimit : rateLimits)
     {
         uint32_t priority = std::get<0>(rateLimit);
-        std::string rate = std::get<1>(rateLimit);
+        double ratio = std::get<1>(rateLimit);  
         uint32_t burstSize = std::get<2>(rateLimit);
         
-        // 创建新的leaky bucket
-        DataRate dataRate(rate);
+        // 根据线路速率和比例计算实际速率
+        uint64_t actualRate = static_cast<uint64_t>(lineRate.GetBitRate() * ratio);
+        DataRate dataRate(actualRate);
         Ptr<LeakyBucket> leakyBucket = CreateObject<LeakyBucket>(dataRate, burstSize, MakeCallback(&PausableQueueDisc::Run, this));
         m_priorityToLeakyBucket[priority] = leakyBucket;
     }
     
-    // 没设置ratelimit的优先级对应的ptr自动为null（因为不在map中）
+
 }
 
 std::shared_ptr<PausableQueueDisc::Stats>
