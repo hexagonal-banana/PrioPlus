@@ -98,7 +98,7 @@
             "name": "(gdb) Launch rdma-simulator debuger",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator",
+            "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
                 "config/fat320-cachef-load8/ExpressPass.json"
             ],
