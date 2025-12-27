@@ -555,17 +555,9 @@ PausableQueueDisc::SetPriorityRateLimits(const std::vector<std::tuple<uint32_t, 
 {
     NS_LOG_FUNCTION(this);
     
-<<<<<<< HEAD
-    Ptr<NetDevice> baseDevice = m_node->GetDevice(m_portIndex);
-    Ptr<DcbNetDevice> dev = DynamicCast<DcbNetDevice>(baseDevice);    
-    
-    // 首先清空现有的限速配置
-    m_priorityToInnerQueue.clear();
-=======
     Ptr<DcbNetDevice> dcbNetDev = DynamicCast<DcbNetDevice>(m_node->GetDevice(m_portIndex));
     DataRate lineRate = dcbNetDev->GetDataRate();
 
->>>>>>> 33e417b7f35ed96f08c9823f4f1959f36bd58f33
     m_priorityToLeakyBucket.clear();
     
 
