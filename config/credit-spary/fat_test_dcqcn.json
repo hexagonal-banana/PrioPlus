@@ -1,6 +1,6 @@
 {
     "inputFile": {
-        "topo": "config/topo/1to1.txt"
+        "topo": "config/topo/fat6.txt"
     },
     "outputFile": {
         "resultFile": "output/*.json"

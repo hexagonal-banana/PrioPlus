@@ -31,7 +31,7 @@ namespace ns3
         NS_LOG_FUNCTION(this << rate << capacity);
         m_RefillAmountbits = static_cast<uint32_t>(m_rate.GetBitRate() * m_RefillInterval.GetSeconds());
         m_RefillCompensatebits=0;
-        NS_ASSERT(m_RefillAmountbits<=m_capacity*8);
+        NS_ABORT_IF(m_RefillAmountbits>m_capacity*8);
         m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
         //m_refillEvent = Simulator::ScheduleNow(&LeakyBucket::Refill, this);
         //Refill();

@@ -110,7 +110,7 @@
         "linkConfig": [
             {
                 "links": "0",
-                "rate": "100Gbps",
+                "rate": "400Gbps",
                 "delay": "1us"
             }
         ]
@@ -134,9 +134,6 @@
             "socketConfig": {
                 "InnerPriority": 0
             },
-            "congestionConfig": {
-                "CreditRateRatio": 0.1
-            },
             "startTime": "0.1s",
             "flowInterval": "0s"
         },
@@ -157,9 +154,6 @@
             },
             "socketConfig": {
                 "InnerPriority": 0
-            },
-            "congestionConfig": {
-                "CreditRateRatio": 0.1
             },
             "startTime": "0.1s",
             "flowInterval": "0s"
@@ -182,9 +176,6 @@
             "socketConfig": {
                 "InnerPriority": 0
             },
-            "congestionConfig": {
-                "CreditRateRatio": 0.1
-            },
             "startTime": "0.1s",
             "flowInterval": "0s"
         },
@@ -205,9 +196,6 @@
             },
             "socketConfig": {
                 "InnerPriority": 0
-            },
-            "congestionConfig": {
-                "CreditRateRatio": 0.1
             },
             "startTime": "0.1s",
             "flowInterval": "0s"
