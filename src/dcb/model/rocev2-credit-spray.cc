@@ -182,12 +182,14 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         SocketIpTosTag ipTosTag;
         ipTosTag.SetTos(m_dataPrio);
         std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag,ipTosTag};
+        
         bool success =
             m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
         if (!success)
         {
             NS_LOG_WARN("Send stop Credit ACK signal failed!");
         }
+        //std::cout << "flow finish" << std::endl;
     }
     }
     void

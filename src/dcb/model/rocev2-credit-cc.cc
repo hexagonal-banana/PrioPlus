@@ -93,6 +93,7 @@ RoCEv2CreditCc::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
     else
     {
         // Stop credit ACK loop when receiving stop signal
+        //std::cout << "Stop credit ACK loop" << std::endl;
         if (m_creditAckEvent.IsRunning())
         {
             m_creditAckEvent.Cancel();

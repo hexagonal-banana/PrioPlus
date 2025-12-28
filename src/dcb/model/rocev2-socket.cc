@@ -1032,6 +1032,7 @@ RoCEv2Socket::Finish()
      */
     // Filter the orphan CNP packets at UdpBasedL4Protocol, thus the socket can be closed
     // immediately
+    // std::cout << "flow finish, Close socket" << std::endl;
     // Close();
 
     // Stop the retransmission timer

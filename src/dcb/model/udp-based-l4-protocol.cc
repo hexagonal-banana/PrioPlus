@@ -157,9 +157,9 @@ UdpBasedL4Protocol::ForwardUp(Ptr<Packet> packet,
             NS_LOG_DEBUG("Received a probe packet for a closed socket.");
             return;
         }
-        NS_LOG_WARN("No endPoints matched in UDP-based L4 protocol with inner port "
-                    << portInfo.dstPort << " on node " << Simulator::GetContext()
-                    << " on time " << Simulator::Now());
+        // NS_LOG_WARN("No endPoints matched in UDP-based L4 protocol with inner port "
+        //             << portInfo.dstPort << " on node " << Simulator::GetContext()
+        //             << " on time " << Simulator::Now());
     }
 }
 

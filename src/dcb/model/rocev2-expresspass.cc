@@ -122,7 +122,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
         packet->AddPacketTag(CreditSeqTag(useSeq));
         SocketIpTosTag ipTostag;
         ipTostag.SetTos(m_dataPrio);
-        packet->AddPacketTag(ipTostag);
+        packet->ReplacePacketTag(ipTostag);
         RoCEv2CreditCc::UpdateStateSend(packet);
     }
 
