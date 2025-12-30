@@ -26,7 +26,7 @@ SwitchNode::GetTypeId()
                         .SetGroupName("Dcb")
                         .AddAttribute("RoutingMode",
                                       "The routing mode",
-                                      EnumValue(RoutingMode::PER_PACKET_SYMMETRIC),
+                                      EnumValue(RoutingMode::PER_FLOW_ECMP),
                                       MakeEnumAccessor(&SwitchNode::m_RoutingMode),
                                       MakeEnumChecker(
                                             RoutingMode::PER_PACKET, "PER_PACKET",

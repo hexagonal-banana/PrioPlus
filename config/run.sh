@@ -4,8 +4,12 @@
 # 功能：使用screen启动config目录下所有fat320子目录中的ExpressPass和CreditSpray配置文件
 
 # 定义项目根目录
-PROJECT_DIR="/home/jduan/credit-spray/CreditSpraying"
+PROJECT_DIR="./"
 CONFIG_DIR="$PROJECT_DIR/config"
+OUTPUT_DIR="$PROJECT_DIR/output"
+
+# 创建输出目录
+mkdir -p "$OUTPUT_DIR"
 
 # 进入项目目录
 cd $PROJECT_DIR
@@ -19,18 +23,28 @@ for dir in $CONFIG_DIR/fat320*; do
         # 启动ExpressPass.json（如果存在）
         if [ -f "$dir/ExpressPass.json" ]; then
             screen_name="${dir_name}-ExpressPass"
+            output_file="$OUTPUT_DIR/ExpressPass-output.txt"
             echo "Starting screen session: $screen_name"
-            screen -dmS "$screen_name" bash -c "./ns3 run 'rdma-simulator $dir/ExpressPass.json'; exec bash"
-            echo "Started: ./ns3 run 'rdma-simulator $dir/ExpressPass.json'"
+            screen -dmS "$screen_name" bash -c "./ns3 run 'rdma-simulator $dir/ExpressPass.json' > '$output_file' 2>&1; exec bash"
+            echo "Started: ./ns3 run 'rdma-simulator $dir/ExpressPass.json' > '$output_file' 2>&1"
         fi
         
         # 启动CreditSpray.json（如果存在）
         if [ -f "$dir/CreditSpray.json" ]; then
             screen_name="${dir_name}-CreditSpray"
+            output_file="$OUTPUT_DIR/CreditSpray-output.txt"
             echo "Starting screen session: $screen_name"
-            screen -dmS "$screen_name" bash -c "./ns3 run 'rdma-simulator $dir/CreditSpray.json'; exec bash"
-            echo "Started: ./ns3 run 'rdma-simulator $dir/CreditSpray.json'"
+            screen -dmS "$screen_name" bash -c "./ns3 run 'rdma-simulator $dir/CreditSpray.json' > '$output_file' 2>&1; exec bash"
+            echo "Started: ./ns3 run 'rdma-simulator $dir/CreditSpray.json' > '$output_file' 2>&1"
         fi
+
+        if [ -f "$dir/dcqcn.json" ]; then
+            screen_name="${dir_name}-dcqcn"
+            output_file="$OUTPUT_DIR/dcqcn-output.txt"
+            echo "Starting screen session: $screen_name"
+            screen -dmS "$screen_name" bash -c "./ns3 run 'rdma-simulator $dir/dcqcn.json' > '$output_file' 2>&1; exec bash"
+            echo "Started: ./ns3 run 'rdma-simulator $dir/dcqcn.json' > '$output_file' 2>&1"
+        fi        
     fi
 done
 

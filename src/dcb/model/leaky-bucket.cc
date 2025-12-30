@@ -61,6 +61,8 @@ namespace ns3
         if (m_refillEvent.IsExpired()&&!isFull())
         {
             m_refillEvent = Simulator::Schedule(m_RefillInterval, &LeakyBucket::Refill, this);
+        }else{
+            //std::cout<<"stop refill event"<<std::endl;
         }
         if (!m_RefillCallback.IsNull())
         {
@@ -71,8 +73,6 @@ namespace ns3
 
     bool LeakyBucket::CanConsume(uint32_t bytes)
     {
-        if(m_refillEvent.IsExpired()&&!isFull())
-            m_refillEvent = Simulator::Schedule(m_RefillInterval,&LeakyBucket::Refill, this);
         NS_LOG_FUNCTION(this << bytes);
         return m_availableTokens >= bytes;
     }
@@ -83,6 +83,9 @@ namespace ns3
         NS_LOG_FUNCTION(this << bytes);
         NS_ABORT_IF(!CanConsume(bytes));
         m_availableTokens -= bytes;
+        if(!isFull()&&m_refillEvent.IsExpired()){
+            m_refillEvent = Simulator::Schedule(m_RefillInterval,&LeakyBucket::Refill, this);
+        }
         return;
     }
 

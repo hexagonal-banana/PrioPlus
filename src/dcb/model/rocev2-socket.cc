@@ -49,6 +49,8 @@ NS_LOG_COMPONENT_DEFINE("RoCEv2Socket");
 
 NS_OBJECT_ENSURE_REGISTERED(RoCEv2Socket);
 
+std::atomic<uint64_t> g_completedFlows(0);
+
 TypeId
 RoCEv2Socket::GetTypeId()
 {
@@ -1021,7 +1023,10 @@ void
 RoCEv2Socket::Finish()
 {
     NS_LOG_FUNCTION(this);
-
+    if(m_flowState == FINISHED)
+    {
+        return;
+    }
     NotifyFlowCompletes();
     m_flowState = FINISHED;
 
@@ -1045,6 +1050,8 @@ RoCEv2Socket::Finish()
     {
         m_sendEvent.Cancel();
     }
+    // Increment the completed flows counter
+    g_completedFlows.fetch_add(1);
 
     // Record the statistics
     m_stats->tFinish = Simulator::Now();

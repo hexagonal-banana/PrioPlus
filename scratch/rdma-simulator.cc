@@ -43,6 +43,9 @@
 #include <iostream>
 #include <map>
 #include <time.h>
+#include <thread>
+#include <chrono>
+#include <atomic>
 
 using namespace ns3;
 
@@ -61,6 +64,26 @@ NS_LOG_COMPONENT_DEFINE("ScratchSimulator");
 [[maybe_unused]] static void PfcReceived(std::pair<uint32_t, uint32_t> nodeAndPortId,
                                          uint8_t prio,
                                          bool isPause);
+
+// Global variables for the monitoring thread
+std::atomic<bool> g_monitoringActive(false);
+std::thread g_monitoringThread;
+//std::atomic<uint64_t> g_completedFlows(0);
+// Function to monitor and print simulation time
+void
+MonitorSimulationTime()
+{
+    g_monitoringActive = true;
+    while (g_monitoringActive)
+    {
+        std::this_thread::sleep_for(std::chrono::minutes(1)); // 每1分钟输出一次
+        if (g_monitoringActive) // 确保在监控活动时才输出
+        {
+            std::cout << "Current simulation time: " << Simulator::Now().GetSeconds() 
+                      << "s, Completed flows: " << ns3::g_completedFlows.load() << std::endl;
+        }
+    }
+}
 
 int
 main(int argc, char* argv[])
@@ -118,6 +141,10 @@ main(int argc, char* argv[])
     // Disable the detailed switch stats for some switches if is set
     json_util::DisableDetailedSwitchStats(configObj, topology);
 
+    // Start the monitoring thread before Simulator::Run()
+    g_monitoringActive = true;
+    g_monitoringThread = std::thread(MonitorSimulationTime);
+
     // Debug trace
     // Config::ConnectWithoutContext("/NodeList/*/DeviceList/*/PhyTxBeginWithId",
     //                               MakeCallback(&PhyTxBegin));
@@ -160,6 +187,13 @@ main(int argc, char* argv[])
     Simulator::Run();
     std::cout<< "time: " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
     json_util::OutputStats(configObj, apps, topology, config_file);
+
+    // Stop the monitoring thread after Simulator::Run() completes
+    g_monitoringActive = false;
+    if (g_monitoringThread.joinable())
+    {
+        g_monitoringThread.join();
+    }
 
     tEnd = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = tEnd - tBegin;

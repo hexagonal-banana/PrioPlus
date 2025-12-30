@@ -653,7 +653,7 @@ class RoCEv2Socket : public UdpBasedSocket
      * The packet to be sent is controled by m_buffer. This function just call m_buffer
      * and send the packet out.
      */
-    void DoSendDataPacket(const DcbTxBuffer::DcbTxBufferItem& item);
+void DoSendDataPacket(const DcbTxBuffer::DcbTxBufferItem& item);
 
     void ForwardUp(Ptr<Packet> packet,
                    Ipv4Header header,
@@ -955,7 +955,8 @@ class CreditRequestTag : public Tag
     bool m_isRequest{false};
 };
 
+extern std::atomic<uint64_t> g_completedFlows;
+
 } // namespace ns3
 
-//
 #endif // ROCEV2_SOCKET_H

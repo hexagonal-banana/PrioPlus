@@ -68,7 +68,7 @@
                     "MaxSize": "10MiB"
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "rate": "3Gbps", "burstSize": 1000}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
                 ]                 
             },
             {
@@ -103,14 +103,14 @@
                     "EcnPMax": 0.2
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "rate": "3Gbps", "burstSize": 1000}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
                 ]                
             }
         ],
         "linkConfig": [
             {
-                "links": "0",
-                "rate": "100Gbps",
+                "links": "switch",
+                "rate": "400Gbps",
                 "delay": "1us"
             }
         ]
@@ -140,10 +140,34 @@
             "startTime": "0.1s",
             "flowInterval": "0s"
         },
+                {
+            "NOTE": "Primary traffic",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "[1]",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "CongestionType": "ns3::RoCEv2CreditSpray",
+                "SendEnabled": true,
+                "FlowPriority":1,
+                "TrafficPattern": "SendOnce",
+                "TrafficSizeBytes": 100000000,
+                "TrafficLoad": 0.0,
+                "DestFixed": true,
+                "DestinationNode": 0
+            },
+            "socketConfig": {
+                "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
+            },
+            "startTime": "0.1s",
+            "flowInterval": "0s"
+        },
         {
             "NOTE": "Recevier side applciation",
             "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "[1]",
+            "nodes": "[0:2]",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
                 "SendEnabled": false,

@@ -137,7 +137,7 @@
                 "InnerPriority": 0
             },
             "startTime": "0.1s",
-            "stopTime": "0.1001s"
+            "stopTime": "0.101s"
         }
     ]
 }

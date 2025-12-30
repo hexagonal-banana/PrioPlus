@@ -262,7 +262,7 @@ RoCEv2CreditSpray::SendCreditAck(uint32_t psn)
     if (m_creditAckInterval.IsStrictlyPositive())
     {
         m_creditAckEvent = Simulator::Schedule(m_creditAckInterval,
-                                               &RoCEv2CreditCc::SendCreditAck,
+                                               &RoCEv2CreditSpray::SendCreditAck,
                                                this,
                                                psn);
     }
@@ -276,7 +276,7 @@ RoCEv2CreditSpray::RateControl(double lossRatio)
     // m_lastUpadateRateSeq=first_nextRTTseq;
     // double lossRatio = static_cast<double>(m_creditLossCount) / sendCredit;
     // m_creditLossCount=0;
-    NS_ASSERT(lossRatio<1&&lossRatio>=0);
+    NS_ABORT_UNLESS(lossRatio<1&&lossRatio>=0);
 
     if(lossRatio<=m_targetLossRatio){
 

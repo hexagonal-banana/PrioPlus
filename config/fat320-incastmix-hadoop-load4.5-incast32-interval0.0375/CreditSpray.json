@@ -64,7 +64,7 @@
                     "MaxSize": "10MiB"
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 100}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
                 ]                
             },
             {
@@ -98,7 +98,7 @@
                     "EcnPMax": 0.2
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 100}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
                 ]   
             }
         ],
@@ -129,6 +129,7 @@
                 "IncastFlowInterval":"0.0375us",
                 "TrafficSizeBytes": 450000,
                 "TrafficLoad": 0.15,
+                "FlowPriority":1,
                 "FlowType": "Incast"
             },
             "socketConfig": {
@@ -147,6 +148,7 @@
                 "SendEnabled": true,
                 "TrafficPattern": "CDF",
                 "TrafficLoad": 0.3,
+                "FlowPriority":1,
                 "FlowType": "Background"
             },
             "cdf": {
@@ -159,6 +161,17 @@
             },
             "startTime": "0.1s",
             "stopTime": "0.11s"
+        },
+        {
+            "NOTE": "Recevier side applciation",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "all",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "SendEnabled": false,
+                "FlowPriority":0
+            },
+            "startTime": "0.1s"
         }
     ]
 }

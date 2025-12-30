@@ -262,6 +262,9 @@ PausableQueueDisc::DoEnqueue(Ptr<QueueDiscItem> item)
     bool retval = qdiscClass->GetQueueDisc()->Enqueue(item);
     if (!retval)
     {
+        std::cout<<"enqueue failed on node "
+                    << Simulator::GetContext()
+                    << ", queue size=" << qdiscClass->GetQueueDisc()->GetCurrentSize()<<std::endl;
         NS_LOG_WARN("PausableQueueDisc: enqueue failed on node "
                     << Simulator::GetContext()
                     << ", queue size=" << qdiscClass->GetQueueDisc()->GetCurrentSize());
