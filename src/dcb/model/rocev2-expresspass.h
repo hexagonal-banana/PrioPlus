@@ -23,7 +23,8 @@ namespace ns3{
                             const RoCEv2Header& roce,
                             const uint32_t senderNextPSN) override;
     void StartCreditAckLoop(const RoCEv2Header& roce);
-    void UpdateStateRecvData(Ptr<Packet> packet) override;
+    void UpdateStateRecvData(Ptr<Packet> packet,
+                             const RoCEv2Header& roce) override;
     void SendCreditRequest(Time rto) override;
     void SendCreditAck(uint32_t psn) override;
     void UpdateStateWithOutbandPkt(Ptr<Packet> packet,

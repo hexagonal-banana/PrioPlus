@@ -25,11 +25,10 @@
             "Timestamp": false
         },
         "RoCEv2Socket": {
-            "RetxMode": "RTO_ONLY",
-            "AckMode": "RECEIVER_DRIVEN"
+            "RetxMode": "GBN"
         },
         "SwitchNode": {
-            "RoutingMode": "PER_FLOW_SYMMETRIC"
+            "RoutingMode": "PER_FLOW_ECMP"
         }, 
         "RoCEv2SocketState": {
             "MinRateRatio": 0.001
@@ -62,10 +61,7 @@
                 "innerQueueDisc": "ns3::FifoQueueDiscEcn",
                 "innerQueueDiscConfig": {
                     "MaxSize": "10MiB"
-                },
-                "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
-                ]
+                }
             },
             {
                 "nodes": "switch",
@@ -96,10 +92,7 @@
                     "EcnKMin": "400KiB",
                     "EcnKMax": "1600KiB",
                     "EcnPMax": 0.2
-                },
-                "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
-                ]
+                }
             }
         ],
         "linkConfig": [
@@ -110,7 +103,7 @@
             },
             {
                 "links": "switch",
-                "rate": "400Gbps",
+                "rate": "100Gbps",
                 "delay": "1us"
             }
         ]
@@ -122,10 +115,10 @@
             "nodes": "all",
             "protocolGroup": "RoCEv2",
             "applicationConfig":{
-                "CongestionType": "ns3::RoCEv2ExpressPass",
+                "CongestionType": "ns3::RoCEv2Dcqcn",
                 "SendEnabled": true,
                 "TrafficPattern": "CDF",
-                "TrafficLoad": 0.5,
+                "TrafficLoad": 0.8,
                 "FlowType": "Background"
             },
             "cdf": {
@@ -136,8 +129,12 @@
             "socketConfig": {
                 "InnerPriority": 0
             },
+            "congestionConfig": {
+                "RateAIRatio": 0.0012,
+                "G": 0.00390625
+            },
             "startTime": "0.1s",
-            "stopTime": "0.1001s"
+            "stopTime": "0.11s"
         }
     ]
 }

@@ -75,6 +75,12 @@ class RoCEv2CreditCc : public RoCEv2CongestionOps
                                    const RoCEv2Header& roce,
                                    const uint32_t senderNextPSN) override;
 
+    /**
+     * When receiving data packet.
+     */
+    void UpdateStateRecvData(Ptr<Packet> packet,
+                             const RoCEv2Header& roce) override;
+
     std::string GetName() const override;
 
         class Stats : public RoCEv2CongestionOps::Stats
@@ -123,6 +129,8 @@ class RoCEv2CreditCc : public RoCEv2CongestionOps
     double m_creditRateRatio;
     uint32_t m_recvAckAfterFinish{0};
 
+    uint32_t m_endPSN{0};
+    bool m_recvEndPSN{false};
     private:
     void Init();
 }; // class RoCEv2CreditCc

@@ -100,7 +100,8 @@ class RoCEv2CongestionOps : public Object
     {
     }
 
-    virtual void UpdateStateRecvData(Ptr<Packet> packet)
+    virtual void UpdateStateRecvData(Ptr<Packet> packet,
+                                     const RoCEv2Header& roce)
     {
     }
     /**

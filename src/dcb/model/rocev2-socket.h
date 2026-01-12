@@ -384,6 +384,16 @@ class RoCEv2SocketState : public Object
         return m_txBuffer;
     }
 
+    inline void SetRxBuffer(std::shared_ptr<DcbRxBuffer> rxBuffer)
+    {
+        m_rxBuffer = rxBuffer;
+    }
+
+    inline std::shared_ptr<DcbRxBuffer> GetRxBuffer() const
+    {
+        return m_rxBuffer;
+    }
+
     inline void SetDeviceRate(DataRate* deviceRate)
     {
         m_deviceRate = deviceRate;
@@ -486,6 +496,7 @@ class RoCEv2SocketState : public Object
     double m_minRateRatio;
     uint64_t m_cwnd; //!< unit: bytes
     DcbTxBuffer* m_txBuffer;
+    std::shared_ptr<DcbRxBuffer> m_rxBuffer;
     DataRate* m_deviceRate;
     Time m_baseRtt; //!< Base RTT. Note that this is auto set by DcbDcbTrafficGenApplication. If
                     //!< not, it should be set manually.
@@ -698,7 +709,7 @@ void DoSendDataPacket(const DcbTxBuffer::DcbTxBufferItem& item);
         Ipv4Address srcAddr;
         bool receivedECN{false};
         EventId lastCNPEvent;
-        std::unique_ptr<DcbRxBuffer> rxBuffer;
+        std::shared_ptr<DcbRxBuffer> rxBuffer;
         Ptr<RoCEv2CongestionOps> ccOps;
         bool ePsnAdvancedAfterNack{false};
         Ptr<Ipv4Interface> incomingInterface;

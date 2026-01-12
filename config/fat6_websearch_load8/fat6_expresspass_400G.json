@@ -1,12 +1,12 @@
 {
     "inputFile": {
-        "topo": "config/topo/1to1.txt"
+        "topo": "config/topo/fat6.txt"
     },
     "outputFile": {
         "resultFile": "output/*.json"
     },
     "runtimeConfig": {
-        "seed": 8259,
+        "seed": 1,
         "runningTime": "1s",
         "stopTime": "10s"
     },
@@ -24,19 +24,15 @@
         "TcpSocketBase": {
             "Timestamp": false
         },
-        "RoCEv2Timely": {
-            "Tlow": "32us",
-            "Thigh": "16us"
-        },
         "RoCEv2Socket": {
             "RetxMode": "NONE",
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
             "RoutingMode": "PER_FLOW_SYMMETRIC"
-        },     
+        }, 
         "RoCEv2SocketState": {
-            "MinRateRatio": 0.01
+            "MinRateRatio": 0.001
         }
     },
     "globalConfig": {
@@ -44,7 +40,7 @@
         "detailedRetxStats": false,
         "detailedQlengthStats": false,
         "qlengthRecordInterval": "10us",
-        "detailedThroughputStats": true,
+        "detailedThroughputStats": false,
         "deviceThroughputRecordInterval": "10us"
     },
     "topologyConfig": {
@@ -69,12 +65,11 @@
                 },
                 "prioRateLimits" :[
                     {"priority": 0, "ratio": 0.03, "burstSize": 1000}
-                ]                 
+                ]
             },
             {
                 "nodes": "switch",
                 "bufferSize": "32MiB",
-                "bufferPerPort": "0.675MiB",
                 "numQueuePerPort": 8,
                 "numLosslessQueue": 2,
                 "trafficControlLayer": "ns3::DcbTrafficControl",
@@ -104,10 +99,15 @@
                 },
                 "prioRateLimits" :[
                     {"priority": 0, "ratio": 0.03, "burstSize": 1000}
-                ]                
+                ]
             }
         ],
         "linkConfig": [
+            {
+                "links": "host",
+                "rate": "100Gbps",
+                "delay": "1us"
+            },
             {
                 "links": "switch",
                 "rate": "400Gbps",
@@ -117,39 +117,39 @@
     },
     "applicationConfig": [
         {
-            "NOTE": "Primary traffic",
+            "NOTE": "Background traffic",
             "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "[0]",
+            "nodes": "all",
             "protocolGroup": "RoCEv2",
-            "applicationConfig": {
+            "applicationConfig":{
                 "CongestionType": "ns3::RoCEv2ExpressPass",
                 "SendEnabled": true,
-                "FlowPriority":1,
-                "TrafficPattern": "SendOnce",
-                "TrafficSizeBytes": 10000000,
-                "TrafficLoad": 0.0,
-                "DestFixed": true,
-                "DestinationNode": 1
+                "TrafficPattern": "CDF",
+                "TrafficLoad": 0.8,
+                "FlowType": "Background",
+                "FlowPriority":1
+            },
+            "cdf": {
+                "cdfFile": "config/trace/WebSearch_distribution.txt",
+                "avgSize": 0,
+                "scaleFactor": 0
             },
             "socketConfig": {
                 "InnerPriority": 0
             },
-            "congestionConfig": {
-                "CreditRateRatio": 0.1
-            },
             "startTime": "0.1s",
-            "flowInterval": "0s"
+            "stopTime": "0.11s"
         },
         {
             "NOTE": "Recevier side applciation",
             "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "[1]",
+            "nodes": "all",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
                 "SendEnabled": false,
                 "FlowPriority":0
             },
             "startTime": "0.1s"
-        }
+        }  
     ]
 }

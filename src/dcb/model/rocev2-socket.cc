@@ -70,7 +70,7 @@ RoCEv2Socket::GetTypeId()
                                           RoCEv2RetxMode::RTO_ONLY,
                                           "RTO_ONLY",
                                           RoCEv2RetxMode::NONE,
-                                          "None"))
+                                          "NONE"))
             .AddAttribute("AckMode",
                           "The ACK mode",
                           EnumValue(RoCEv2AckMode::SENDER_DRIVEN),
@@ -349,6 +349,10 @@ RoCEv2Socket::ForwardUp(Ptr<Packet> packet,
                         uint32_t port,
                         Ptr<Ipv4Interface> incomingInterface)
 {
+    if(m_flowState==FINISHED){
+        return;
+    }
+    
     RoCEv2Header rocev2Header;
     packet->RemoveHeader(rocev2Header);
 
@@ -480,13 +484,13 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
     NS_LOG_FUNCTION(this << packet);
 
     CreditRequestTag crTag;
-    if (packet->PeekPacketTag(crTag))
+    if (packet->PeekPacketTag(crTag)&&crTag.IsRequest())
     {
         m_rxState.ccOps->UpdateStateWithOutbandPkt(packet, roce, 0);
         return;
     }
 
-    m_rxState.ccOps->UpdateStateRecvData(packet);
+    m_rxState.ccOps->UpdateStateRecvData(packet, roce);
     // Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(packet);
     // InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
 
@@ -614,9 +618,10 @@ RoCEv2Socket::InitRxStateIfNeeded(const RoCEv2Header& roce,
     m_rxState.ePsnAdvancedAfterNack = false;
     m_rxState.receivedECN = false;
     m_rxState.rxBuffer =
-        std::make_unique<DcbRxBuffer>(MakeCallback(&RoCEv2Socket::DoForwardUp, this),
+        std::make_shared<DcbRxBuffer>(MakeCallback(&RoCEv2Socket::DoForwardUp, this),
                                       incomingInterface,
                                       m_retxMode);
+    m_sockState->SetRxBuffer(m_rxState.rxBuffer);
 }
 
 void
@@ -687,7 +692,7 @@ RoCEv2Socket::CreateReceiverSocketForFlow(const RoCEv2Header& roce,
     childState->SetMss(parentState->GetMss());
     childState->SetBaseRtt(parentState->GetBaseRtt());
     childState->SetBaseOneWayDelay(parentState->GetBaseOneWayDelay());
-    Ptr<RoCEv2CongestionOps> ccOps = CreateCcOpsFromTag(originalPacket);
+    Ptr<RoCEv2CongestionOps> ccOps = sock->CreateCcOpsFromTag(originalPacket);
     sock->InitRxStateIfNeeded(roce, header, incomingInterface, ccOps);
     sock->m_rxState.ccOps->SetStopTime(Time::Max()); // avoid receiver socket close
     return sock;
@@ -1064,7 +1069,7 @@ void
 RoCEv2Socket::RetransmissionTimeout()
 {
     NS_LOG_FUNCTION(this);
-
+    if(m_flowState==FINISHED)return;
     if (m_retxMode == RoCEv2RetxMode::IRN && m_txBuffer.GetOnTheFly() > m_irnPktThresh)
     {
         // last time schedule retx use rto_low
@@ -1097,6 +1102,7 @@ RoCEv2Socket::RetransmissionTimeout()
     else if (m_retxMode == RoCEv2RetxMode::NONE)
     {
         NS_LOG_WARN("Retransmission mode is NONE, skipping retransmission.");
+        std::cout << "Retransmission timeout, but retx mode is NONE." << std::endl;
         return;
     }
 

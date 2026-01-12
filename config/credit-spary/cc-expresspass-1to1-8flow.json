@@ -1,9 +1,9 @@
 {
     "inputFile": {
-        "topo": "config/topo/fat4.txt"
+        "topo": "config/topo/1to1.txt"
     },
     "outputFile": {
-        "resultFile": "output/*-1.json"
+        "resultFile": "output/*.json"
     },
     "runtimeConfig": {
         "seed": 8259,
@@ -33,8 +33,8 @@
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
-            "RoutingMode": "PER_PACKET_SYMMETRIC"
-        },
+            "RoutingMode": "PER_FLOW_SYMMETRIC"
+        },     
         "RoCEv2SocketState": {
             "MinRateRatio": 0.01
         }
@@ -109,7 +109,7 @@
         ],
         "linkConfig": [
             {
-                "links": "0",
+                "links": "switch",
                 "rate": "400Gbps",
                 "delay": "1us"
             }
@@ -122,80 +122,188 @@
             "nodes": "[0]",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
-                "CongestionType": "ns3::RoCEv2CreditSpray",
+                "CongestionType": "ns3::RoCEv2ExpressPass",
                 "SendEnabled": true,
                 "FlowPriority":1,
                 "TrafficPattern": "SendOnce",
                 "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
-                "DestinationNode": 12
+                "DestinationNode": 1
             },
             "socketConfig": {
                 "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
             },
             "startTime": "0.1s",
             "flowInterval": "0s"
         },
-                {
+        {
             "NOTE": "Primary traffic",
             "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "[1]",
+            "nodes": "[0]",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
-                "CongestionType": "ns3::RoCEv2CreditSpray",
+                "CongestionType": "ns3::RoCEv2ExpressPass",
                 "SendEnabled": true,
                 "FlowPriority":1,
                 "TrafficPattern": "SendOnce",
                 "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
-                "DestinationNode": 13
+                "DestinationNode": 1
             },
             "socketConfig": {
                 "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
             },
             "startTime": "0.1s",
             "flowInterval": "0s"
         },
-                {
+        {
             "NOTE": "Primary traffic",
             "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "[2]",
+            "nodes": "[0]",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
-                "CongestionType": "ns3::RoCEv2CreditSpray",
+                "CongestionType": "ns3::RoCEv2ExpressPass",
                 "SendEnabled": true,
                 "FlowPriority":1,
                 "TrafficPattern": "SendOnce",
                 "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
-                "DestinationNode": 14
+                "DestinationNode": 1
             },
             "socketConfig": {
                 "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
             },
             "startTime": "0.1s",
             "flowInterval": "0s"
         },
-                {
+        {
             "NOTE": "Primary traffic",
             "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "[3]",
+            "nodes": "[0]",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
-                "CongestionType": "ns3::RoCEv2CreditSpray",
+                "CongestionType": "ns3::RoCEv2ExpressPass",
                 "SendEnabled": true,
                 "FlowPriority":1,
                 "TrafficPattern": "SendOnce",
                 "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
-                "DestinationNode": 15
+                "DestinationNode": 1
             },
             "socketConfig": {
                 "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
+            },
+            "startTime": "0.1s",
+            "flowInterval": "0s"
+        },
+        {
+            "NOTE": "Primary traffic",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "[0]",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "CongestionType": "ns3::RoCEv2ExpressPass",
+                "SendEnabled": true,
+                "FlowPriority":1,
+                "TrafficPattern": "SendOnce",
+                "TrafficSizeBytes": 10000000,
+                "TrafficLoad": 0.0,
+                "DestFixed": true,
+                "DestinationNode": 1
+            },
+            "socketConfig": {
+                "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
+            },
+            "startTime": "0.1s",
+            "flowInterval": "0s"
+        },
+        {
+            "NOTE": "Primary traffic",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "[0]",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "CongestionType": "ns3::RoCEv2ExpressPass",
+                "SendEnabled": true,
+                "FlowPriority":1,
+                "TrafficPattern": "SendOnce",
+                "TrafficSizeBytes": 10000000,
+                "TrafficLoad": 0.0,
+                "DestFixed": true,
+                "DestinationNode": 1
+            },
+            "socketConfig": {
+                "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
+            },
+            "startTime": "0.1s",
+            "flowInterval": "0s"
+        },
+        {
+            "NOTE": "Primary traffic",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "[0]",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "CongestionType": "ns3::RoCEv2ExpressPass",
+                "SendEnabled": true,
+                "FlowPriority":1,
+                "TrafficPattern": "SendOnce",
+                "TrafficSizeBytes": 10000000,
+                "TrafficLoad": 0.0,
+                "DestFixed": true,
+                "DestinationNode": 1
+            },
+            "socketConfig": {
+                "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
+            },
+            "startTime": "0.1s",
+            "flowInterval": "0s"
+        },
+        {
+            "NOTE": "Primary traffic",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "[0]",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "CongestionType": "ns3::RoCEv2ExpressPass",
+                "SendEnabled": true,
+                "FlowPriority":1,
+                "TrafficPattern": "SendOnce",
+                "TrafficSizeBytes": 10000000,
+                "TrafficLoad": 0.0,
+                "DestFixed": true,
+                "DestinationNode": 1
+            },
+            "socketConfig": {
+                "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "CreditRateRatio": 0.1
             },
             "startTime": "0.1s",
             "flowInterval": "0s"
@@ -203,7 +311,7 @@
         {
             "NOTE": "Recevier side applciation",
             "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "[8:16]",
+            "nodes": "[1]",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
                 "SendEnabled": false,

@@ -45,7 +45,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
                                               MakeDoubleChecker<double>(0.0, 1.0))
                                 .AddAttribute("TargetLossRate",
                                               "The target loss rate",
-                                              DoubleValue(0.1),
+                                              DoubleValue(0.5),
                                               MakeDoubleAccessor(&RoCEv2ExpressPass::m_targetLossRatio),
                                               MakeDoubleChecker<double>(0.0, 1.0))
                                 .AddAttribute("InitAggressiveRatio",
@@ -116,7 +116,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
         NS_LOG_FUNCTION(this << packet);
 
         CreditRequestTag crTag;
-        NS_ASSERT(!m_senderCreditSeqList.empty());
+        NS_ABORT_UNLESS(!m_senderCreditSeqList.empty());
         uint64_t useSeq=m_senderCreditSeqList.front();
         m_senderCreditSeqList.pop();
         packet->AddPacketTag(CreditSeqTag(useSeq));
@@ -134,7 +134,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
 
         CreditSeqTag csTag;
         bool hasTag = ack->PeekPacketTag(csTag);
-        NS_ASSERT(hasTag);
+        NS_ABORT_UNLESS(hasTag);
         m_senderCreditSeqList.push(csTag.GetSeq());
 
 
@@ -148,7 +148,7 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
      * 2. cwnd += 1: make the right bound move 1 packet.
      */
     int32_t cwndToSet = m_sockState->GetCwnd() + ((int32_t)1 - ackedPkts) * (int32_t)m_sockState->GetPacketSize();
-    NS_ASSERT_MSG(cwndToSet >= 0, "CWND to set is negative!");
+    NS_ABORT_MSG_UNLESS(cwndToSet >= 0, "CWND to set is negative!");
     m_sockState->SetCwnd(cwndToSet);
     //m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
     m_sendPendingDataCb(); // Trigger sending pending data packets
@@ -160,21 +160,22 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2ExpressPass);
     }
 
     //If all data are acknowledged, send a stop-credit message once
-    if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
-        m_recvAckAfterFinish++ % 2000 == 0)
-    {
-        CongestionTypeTag ctTag(GetTypeId().GetUid());
-        CreditRequestTag crTag(false);
-        SocketIpTosTag ipTosTag;
-        ipTosTag.SetTos(m_dataPrio);
-        std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag,ipTosTag};
-        bool success =
-            m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
-        if (!success)
-        {
-            NS_LOG_WARN("Send stop Credit ACK signal failed!");
-        }
-    }
+    // if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
+    //     m_recvAckAfterFinish % 200000 == 0)
+    // {
+    //     m_recvAckAfterFinish++;
+    //     CongestionTypeTag ctTag(GetTypeId().GetUid());
+    //     CreditRequestTag crTag(false);
+    //     SocketIpTosTag ipTosTag;
+    //     ipTosTag.SetTos(m_dataPrio);
+    //     std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag,ipTosTag};
+    //     bool success =
+    //         m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
+    //     if (!success)
+    //     {
+    //         NS_LOG_WARN("Send stop Credit ACK signal failed!");
+    //     }
+    // }
     }
     void
     RoCEv2ExpressPass::SendCreditRequest(Time rto)
@@ -222,6 +223,7 @@ void
 RoCEv2ExpressPass::SendCreditAck(uint32_t psn)
 {
     NS_LOG_FUNCTION(this << psn);
+    
     if (CheckStopCondition())
     {
         return;
@@ -230,7 +232,10 @@ RoCEv2ExpressPass::SendCreditAck(uint32_t psn)
     CreditSeqTag csTag(m_nextCreditSeq++);
     CongestionTypeTag ctTag(GetTypeId().GetUid());
     SocketIpTosTag ipTosTag;
-    ipTosTag.SetTos(m_creditPrio);
+    if(m_recvEndPSN&&m_endPSN==m_sockState->GetRxBuffer().get()->GetExpectedPsn())
+        ipTosTag.SetTos(m_dataPrio);
+    else
+        ipTosTag.SetTos(m_creditPrio);
     
     std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag,csTag,m_creditPathTag,ipTosTag};
 
@@ -242,6 +247,9 @@ RoCEv2ExpressPass::SendCreditAck(uint32_t psn)
         NS_LOG_WARN("Send Credit ACK failed!");
         return;
     }
+
+    if(m_recvEndPSN&&m_endPSN==m_sockState->GetRxBuffer().get()->GetExpectedPsn())
+        return;
 
     if (m_creditAckInterval.IsStrictlyPositive())
     {
@@ -260,8 +268,9 @@ RoCEv2ExpressPass::RateControl(double lossRatio)
     // m_lastUpadateRateSeq=first_nextRTTseq;
     // double lossRatio = static_cast<double>(m_creditLossCount) / sendCredit;
     // m_creditLossCount=0;
-    NS_ABORT_UNLESS(lossRatio<1&&lossRatio>=0);
-
+    NS_ABORT_UNLESS(lossRatio>=0);
+    NS_ABORT_UNLESS(lossRatio<1);
+    //std::cout<<"flow "<<this<<" loss ratio "<<lossRatio<<" , target loss ratio "<<m_targetLossRatio<<std::endl;
     if(lossRatio<=m_targetLossRatio){
 
         if(m_rateControlLastAction==RATE_CONTROL_LAST_ACTION_INCREASE){
@@ -274,7 +283,7 @@ RoCEv2ExpressPass::RateControl(double lossRatio)
                 m_aggressiveRatio*maxRate*(1+m_targetLossRatio);
         m_creditRate=DataRate(uint64_t(newRate));
 
-        //std::cout<<"host "<<Simulator::GetContext()<<" rate increase";
+        //std::cout<<"flow "<<this<<" rate increase to "<<newRate<<std::endl;
         UpdateCreditRate(m_creditRate);
 
         m_rateControlLastAction=RATE_CONTROL_LAST_ACTION_INCREASE;
@@ -284,7 +293,7 @@ RoCEv2ExpressPass::RateControl(double lossRatio)
         double newRate=(1-lossRatio)*(1+m_targetLossRatio)*curRate;
         m_creditRate=DataRate(uint64_t(newRate));
 
-        //std::cout<<"host "<<Simulator::GetContext()<<" rate decrease";
+        //std::cout<<"flow "<<this<<" rate decrease to "<<newRate<<std::endl;
         UpdateCreditRate(m_creditRate);
 
         m_aggressiveRatio=std::max(m_minAggressiveRatio,m_aggressiveRatio/2);
@@ -303,8 +312,8 @@ RoCEv2ExpressPass::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
     PathTag pathTag;
     bool hasPathTag = packet->PeekPacketTag(pathTag);
     bool hasCrTag = packet->PeekPacketTag(crTag);
-    NS_ASSERT(hasPathTag);
-    NS_ASSERT(hasCrTag);
+    NS_ABORT_UNLESS(hasPathTag);
+    NS_ABORT_UNLESS(hasCrTag);
     if(crTag.IsRequest()){
         m_creditPathTag=PathTag(pathTag);
         m_creditPathTag.forward=false;
@@ -335,14 +344,15 @@ RoCEv2ExpressPass::StartCreditAckLoop(const RoCEv2Header& roce)
 }
 
 void
-RoCEv2ExpressPass::UpdateStateRecvData(Ptr<Packet> packet)
+RoCEv2ExpressPass::UpdateStateRecvData(Ptr<Packet> packet,
+                                         const RoCEv2Header& roce)
 {
     NS_LOG_FUNCTION(this << packet);
     CreditSeqTag csTag;
     bool hasTag = packet->PeekPacketTag(csTag);
-    NS_ASSERT(hasTag);
+    NS_ABORT_UNLESS(hasTag);
     uint64_t pktSeq=csTag.GetSeq();
-    NS_ASSERT(pktSeq>m_lastRecvCreditSeq);
+    NS_ABORT_UNLESS(pktSeq>m_lastRecvCreditSeq);
     m_creditLossCount+=pktSeq-m_lastRecvCreditSeq-1;
     m_lastRecvCreditSeq=pktSeq;
 
@@ -356,7 +366,7 @@ RoCEv2ExpressPass::UpdateStateRecvData(Ptr<Packet> packet)
         }
         m_nextUpdateSeq=m_nextCreditSeq;
     }
-
+    RoCEv2CreditCc::UpdateStateRecvData(packet, roce);
 }
 // CreditSeqTag implementation
 TypeId

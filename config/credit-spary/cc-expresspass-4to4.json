@@ -29,7 +29,7 @@
             "Thigh": "16us"
         },
         "RoCEv2Socket": {
-            "RetxMode": "RTO_ONLY",
+            "RetxMode": "NONE",
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
@@ -68,7 +68,7 @@
                     "MaxSize": "10MiB"
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "rate": "3Gbps", "burstSize": 1000}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
                 ]                 
             },
             {
@@ -103,14 +103,14 @@
                     "EcnPMax": 0.2
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "rate": "3Gbps", "burstSize": 1000}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
                 ]                
             }
         ],
         "linkConfig": [
             {
                 "links": "0",
-                "rate": "100Gbps",
+                "rate": "400Gbps",
                 "delay": "1us"
             }
         ]

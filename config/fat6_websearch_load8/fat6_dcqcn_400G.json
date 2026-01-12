@@ -1,3 +1,4 @@
+
 {
     "inputFile": {
         "topo": "config/topo/fat6.txt"
@@ -118,7 +119,7 @@
                 "CongestionType": "ns3::RoCEv2Dcqcn",
                 "SendEnabled": true,
                 "TrafficPattern": "CDF",
-                "TrafficLoad": 0.5,
+                "TrafficLoad": 0.8,
                 "FlowType": "Background"
             },
             "cdf": {

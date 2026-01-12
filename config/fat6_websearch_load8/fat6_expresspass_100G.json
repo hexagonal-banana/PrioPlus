@@ -25,11 +25,11 @@
             "Timestamp": false
         },
         "RoCEv2Socket": {
-            "RetxMode": "RTO_ONLY",
+            "RetxMode": "NONE",
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
-            "RoutingMode": "PER_PACKET_SYMMETRIC"
+            "RoutingMode": "PER_FLOW_SYMMETRIC"
         }, 
         "RoCEv2SocketState": {
             "MinRateRatio": 0.001
@@ -40,7 +40,7 @@
         "detailedRetxStats": false,
         "detailedQlengthStats": false,
         "qlengthRecordInterval": "10us",
-        "detailedThroughputStats": false,
+        "detailedThroughputStats": true,
         "deviceThroughputRecordInterval": "10us"
     },
     "topologyConfig": {
@@ -110,7 +110,7 @@
             },
             {
                 "links": "switch",
-                "rate": "400Gbps",
+                "rate": "100Gbps",
                 "delay": "1us"
             }
         ]
@@ -122,11 +122,12 @@
             "nodes": "all",
             "protocolGroup": "RoCEv2",
             "applicationConfig":{
-                "CongestionType": "ns3::RoCEv2CreditSpray",
+                "CongestionType": "ns3::RoCEv2ExpressPass",
                 "SendEnabled": true,
                 "TrafficPattern": "CDF",
-                "TrafficLoad": 0.5,
-                "FlowType": "Background"
+                "TrafficLoad": 0.8,
+                "FlowType": "Background",
+                "FlowPriority":1
             },
             "cdf": {
                 "cdfFile": "config/trace/WebSearch_distribution.txt",
@@ -137,7 +138,18 @@
                 "InnerPriority": 0
             },
             "startTime": "0.1s",
-            "stopTime": "0.101s"
-        }
+            "stopTime": "0.11s"
+        },
+        {
+            "NOTE": "Recevier side applciation",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "all",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "SendEnabled": false,
+                "FlowPriority":0
+            },
+            "startTime": "0.1s"
+        }  
     ]
 }

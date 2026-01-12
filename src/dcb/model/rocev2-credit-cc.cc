@@ -71,7 +71,14 @@ RoCEv2CreditCc::UpdateStateSend(Ptr<Packet> packet)
 
     // Get packet's PSN from roceheader.
     RoCEv2Header roceHeader;
-    packet->PeekHeader(roceHeader);
+    bool hasTag=packet->PeekHeader(roceHeader);
+    NS_ASSERT(hasTag);
+    uint32_t psn = roceHeader.GetPSN();
+    if (psn == m_sockState->GetTxBuffer()->GetEndPsn()-1)
+    {
+        CreditRequestTag crTag(false);
+        packet->AddPacketTag(crTag);
+    }
 }
 
 void
@@ -90,15 +97,15 @@ RoCEv2CreditCc::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
     {
         this->StartCreditAckLoop(roce);
     }
-    else
-    {
-        // Stop credit ACK loop when receiving stop signal
-        //std::cout << "Stop credit ACK loop" << std::endl;
-        if (m_creditAckEvent.IsRunning())
-        {
-            m_creditAckEvent.Cancel();
-        }
-    }
+    // else
+    // {
+    //     // Stop credit ACK loop when receiving stop signal
+    //     //std::cout << "Stop credit ACK loop" << std::endl;
+    //     if (m_creditAckEvent.IsRunning())
+    //     {
+    //         m_creditAckEvent.Cancel();
+    //     }
+    // }
 }
 
 void
@@ -130,19 +137,19 @@ RoCEv2CreditCc::UpdateStateWithRcvACK(Ptr<Packet> ack,
     }
 
     //If all data are acknowledged, send a stop-credit message once
-    if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
-        m_recvAckAfterFinish++ % 20 == 0)
-    {
-        CongestionTypeTag ctTag(GetTypeId().GetUid());
-        CreditRequestTag crTag(false);
-        std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag};
-        bool success =
-            m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
-        if (!success)
-        {
-            NS_LOG_WARN("Send stop Credit ACK signal failed!");
-        }
-    }
+    // if (roce.GetPSN() == m_sockState->GetTxBuffer()->GetEndPsn() &&
+    //     m_recvAckAfterFinish++ % 20 == 0)
+    // {
+    //     CongestionTypeTag ctTag(GetTypeId().GetUid());
+    //     CreditRequestTag crTag(false);
+    //     std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag};
+    //     bool success =
+    //         m_sendOutbandPktCb(m_sockState->GetTxBuffer()->GetEndPsn(), true, packetTags);
+    //     if (!success)
+    //     {
+    //         NS_LOG_WARN("Send stop Credit ACK signal failed!");
+    //     }
+    // }
 }
 
 std::string
@@ -319,4 +326,18 @@ RoCEv2CreditCc::Stats::Stats()
     }
 }
 
+void RoCEv2CreditCc::UpdateStateRecvData(Ptr<Packet> packet,
+                                         const RoCEv2Header& roce)
+{
+    NS_LOG_FUNCTION(this << packet);
+
+    CreditRequestTag crTag;
+    if(packet->PeekPacketTag(crTag)&&crTag.IsRequest()==false)
+    {
+       m_endPSN=roce.GetPSN()+1;
+       m_recvEndPSN=true;
+    }
+    
 } // namespace ns3
+
+}

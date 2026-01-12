@@ -11,7 +11,7 @@ import argparse
 import os
 import numpy as np
 
-def plot_throughput_scatter(json_file_path, target_switch_id=None):
+def plot_throughput_scatter(json_file_path, target_switch_id=None, show_flow_lines=False):
     """
     Plot queue throughput scatter plot - one figure per queue
     Add vertical lines for flow start and end times
@@ -19,6 +19,7 @@ def plot_throughput_scatter(json_file_path, target_switch_id=None):
     Args:
         json_file_path (str): JSON file path
         target_switch_id (int): Optional switch ID to filter by
+        show_flow_lines (bool): Whether to show vertical lines for flow start/end times
     """
     # Read JSON file
     try:
@@ -104,8 +105,8 @@ def plot_throughput_scatter(json_file_path, target_switch_id=None):
                         plt.scatter(relative_times, throughputs_gbps, 
                                    color='blue', alpha=0.7, s=10, label='Throughput')
                         
-                        # Add vertical lines for flow start and end times
-                        if flow_times:
+                        # Add vertical lines for flow start and end times if enabled
+                        if flow_times and show_flow_lines:
                             # Define colors for different flows
                             colors = ['red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'olive']
                             
@@ -158,6 +159,10 @@ def main():
     parser = argparse.ArgumentParser(description='Plot throughput scatter plot for each queue in JSON file with flow timing lines')
     parser.add_argument('json_file', help='JSON file path')
     parser.add_argument('switch_id', nargs='?', type=int, help='Optional switch ID to filter by')
+    parser.add_argument('--show-flow-lines', action='store_true', default=False, 
+                        help='Show vertical lines for flow start/end times (default: False)')
+    parser.add_argument('--hide-flow-lines', action='store_false', dest='show_flow_lines', 
+                        help='Hide vertical lines for flow start/end times (default behavior)')
     
     args = parser.parse_args()
     
@@ -167,7 +172,7 @@ def main():
         return
     
     # Plot graph
-    plot_throughput_scatter(args.json_file, args.switch_id)
+    plot_throughput_scatter(args.json_file, args.switch_id, args.show_flow_lines)
 
 if __name__ == "__main__":
     main()

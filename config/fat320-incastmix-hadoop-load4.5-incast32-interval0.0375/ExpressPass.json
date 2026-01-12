@@ -25,7 +25,7 @@
             "Timestamp": false
         },
         "RoCEv2Socket": {
-            "RetxMode": "RTO_ONLY",
+            "RetxMode": "NONE",
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
@@ -69,7 +69,7 @@
             },
             {
                 "nodes": "switch",
-                "bufferSize": "32MiB",
+                "bufferSize": "10240MiB",
                 "numQueuePerPort": 8,
                 "numLosslessQueue": 2,
                 "trafficControlLayer": "ns3::DcbTrafficControl",
