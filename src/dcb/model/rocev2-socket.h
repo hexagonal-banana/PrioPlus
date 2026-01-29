@@ -373,7 +373,17 @@ class RoCEv2SocketState : public Object
     {
         return m_cwnd;
     }
+    
+    inline void SetCredit(uint64_t credit)
+    {
+        m_credit = credit;
+    }
 
+    inline uint64_t GetCredit() const
+    {
+        return m_credit;
+    }
+    
     inline void SetTxBuffer(DcbTxBuffer* txBuffer)
     {
         m_txBuffer = txBuffer;
@@ -495,6 +505,7 @@ class RoCEv2SocketState : public Object
     double m_rateRatio;
     double m_minRateRatio;
     uint64_t m_cwnd; //!< unit: bytes
+    uint64_t m_credit; //!< unit: bytes
     DcbTxBuffer* m_txBuffer;
     std::shared_ptr<DcbRxBuffer> m_rxBuffer;
     DataRate* m_deviceRate;

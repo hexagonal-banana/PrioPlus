@@ -151,19 +151,22 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         m_senderPathTagList.push(PathTag(pathTag));
         m_senderCreditSeqList.push(csTag.GetSeq());
 
-        int32_t ackedPkts =
-        std::max((int32_t)0, (int32_t)roce.GetPSN() - (int32_t)m_sockState->GetTxBuffer()->GetFrontPsn());
+        // int32_t ackedPkts =
+        // std::max((int32_t)0, (int32_t)roce.GetPSN() - (int32_t)m_sockState->GetTxBuffer()->GetFrontPsn());
     /**
      * When receiving a credit, we want the right bound of the window +1, strictly.
      * To achieve this, we do these operations:
      * 1. cwnd -= ackedPkts: the ackedPkts is how many packets the left bound moved. We minus it to
      * make the right bound do not move.
      * 2. cwnd += 1: make the right bound move 1 packet.
+     * 
+     * 3. might less than zero when retransmit set cwnd to 0. so we max it with packet size.
      */
-    int32_t cwndToSet = m_sockState->GetCwnd() + ((int32_t)1 - ackedPkts) * (int32_t)m_sockState->GetPacketSize();
-    NS_ABORT_MSG_UNLESS(cwndToSet >= 0, "CWND to set is negative!");
-    m_sockState->SetCwnd(cwndToSet);
-    //m_sockState->SetCwnd(m_sockState->GetCwnd() + (1 - ackedPkts) * m_sockState->GetPacketSize());
+    // int64_t cwndToSet = std::max((int64_t)m_sockState->GetPacketSize(), (int64_t)m_sockState->GetCwnd() + ((int64_t)1 - ackedPkts) * (int64_t)m_sockState->GetPacketSize());
+    // NS_ABORT_MSG_UNLESS(cwndToSet >= 0, "CWND to set is negative!");
+    // m_sockState->SetCwnd((uint64_t)cwndToSet);
+    
+    m_sockState->SetCredit(m_sockState->GetCredit() + m_sockState->GetPacketSize());
     m_sendPendingDataCb(); // Trigger sending pending data packets
 
     // Stop sending further credit requests once any ACK is received
@@ -197,8 +200,8 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
     {
     NS_LOG_FUNCTION(this << rto);
     // To stop sending, we set the cwnd to 0
-    m_sockState->SetCwnd(0);
-
+    //m_sockState->SetCwnd(0);
+    m_sockState->SetCredit(0);
     // Check if a Req is just sent
     if (m_cReqTimeOut.IsRunning())
     {
@@ -302,7 +305,9 @@ RoCEv2CreditSpray::RateControl(double lossRatio)
     }
     else{
         double curRate=m_creditRate.GetBitRate();
+        double minRate=m_sockState->GetDeviceRate()->GetBitRate()*0.001;
         double newRate=(1-lossRatio)*(1+m_targetLossRatio)*curRate;
+        newRate=std::max(minRate,newRate);
         m_creditRate=DataRate(uint64_t(newRate));
 
         //std::cout<<"host "<<Simulator::GetContext()<<" rate decrease";

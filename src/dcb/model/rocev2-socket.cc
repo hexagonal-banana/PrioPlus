@@ -195,6 +195,12 @@ RoCEv2Socket::SendPendingPacket()
         // When there is a new ACK, the sending will be scheduled at other place.
     }
 
+    if (m_ackMode == RECEIVER_DRIVEN && m_sockState->GetCredit() < totalPacketSize)
+    {
+        // The credit is not enough to send a packet.
+        return;
+    }
+
     if (m_ackDrivenPacing)
     {
         // The cwnd is less than a packet size and ack-driven pacing is enabled.
@@ -281,6 +287,8 @@ RoCEv2Socket::SendPendingPacket()
     const DcbTxBuffer::DcbTxBufferItem& item = m_txBuffer.PopNextShouldSend();
     const uint32_t sz =
         item.m_payload->GetSize() + m_innerProto->GetHeaderSize() + m_ccOps->GetExtraHeaderSize();
+
+    if(m_ackMode==RECEIVER_DRIVEN)m_sockState->SetCredit(m_sockState->GetCredit() - totalPacketSize);
     DoSendDataPacket(item);
 
     // Control the send rate by interval of sending packets.
@@ -406,12 +414,6 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
 
     AETHeader aeth;
     packet->RemoveHeader(aeth);
-
-    if (roce.GetPSN() >= 1444 && m_node->GetId() == 3)
-    {
-        NS_LOG_DEBUG("Break point");
-    }
-
     // Record the expected PSN, for both ack and nack
     m_stats->RecordExpectedPsn(roce.GetPSN());
     switch (aeth.GetSyndromeType())
@@ -1097,7 +1099,10 @@ RoCEv2Socket::RetransmissionTimeout()
     else if (m_retxMode == RoCEv2RetxMode::RTO_ONLY)
     {
         // Retransmit the first unacked packet
+        //m_sockState->SetCwnd(0);
+        m_sockState->SetCredit(0);
         m_txBuffer.RetransmitFrom(m_txBuffer.GetFrontPsn());
+        std::cout << "Retransmission timeout in RTO_ONLY mode, retransmit from psn " << m_txBuffer.GetFrontPsn() << std::endl;
     }
     else if (m_retxMode == RoCEv2RetxMode::NONE)
     {
@@ -1842,7 +1847,8 @@ RoCEv2SocketState::GetTypeId()
 
 RoCEv2SocketState::RoCEv2SocketState()
     : m_rateRatio(1.),
-      m_cwnd(UINT64_MAX >> 1)
+      m_cwnd(UINT64_MAX >> 1), 
+      m_credit(UINT64_MAX >> 1)
 {
 }
 

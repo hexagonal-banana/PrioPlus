@@ -8,7 +8,7 @@
     "runtimeConfig": {
         "seed": 1,
         "runningTime": "1s",
-        "stopTime": "10s"
+        "stopTime": "3s"
     },
     "defaultConfig": {
         "TcpL4Protocol": {
@@ -25,7 +25,7 @@
             "Timestamp": false
         },
         "RoCEv2Socket": {
-            "RetxMode": "NONE",
+            "RetxMode": "RTO_ONLY",
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
@@ -64,7 +64,7 @@
                     "MaxSize": "10MiB"
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 100}
                 ]
             },
             {
@@ -98,7 +98,7 @@
                     "EcnPMax": 0.2
                 },
                 "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 1000}
+                    {"priority": 0, "ratio": 0.03, "burstSize": 100}
                 ]
             }
         ],

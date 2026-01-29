@@ -185,20 +185,20 @@ main(int argc, char* argv[])
     // }
     // Simulator::ScheduleDestroy();
     Simulator::Run();
-    std::cout<< "time: " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
-    json_util::OutputStats(configObj, apps, topology, config_file);
 
-    // Stop the monitoring thread after Simulator::Run() completes
     g_monitoringActive = false;
     if (g_monitoringThread.joinable())
     {
         g_monitoringThread.join();
     }
 
+    std::cout<< "time: " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
+    json_util::OutputStats(configObj, apps, topology, config_file);
+
     tEnd = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = tEnd - tBegin;
-    std::cout << "Total used time: " << elapsed_seconds.count() << "s"
-              << std::endl;
+    std::cout << "Total used time: " << elapsed_seconds.count() << "s, total complete flows: "
+              << ns3::g_completedFlows.load() << std::endl;
     Simulator::Destroy();
 }
 

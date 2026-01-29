@@ -187,7 +187,8 @@ PausableQueueDisc::SetPaused(uint32_t priority, bool paused)
 {
     NS_LOG_FUNCTION(this);
     GetQueueDiscClass(priority)->SetPaused(paused);
-
+    std::cout << "PausableQueueDisc: Set paused " << paused << " for priority " << priority<<" on node "<<Simulator::GetContext()
+              << std::endl;
     // If the queue is resumed, we need to rerun the qdisc
     if (paused == false)
     {

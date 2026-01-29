@@ -201,6 +201,7 @@ DcbTrafficControl::Send(Ptr<NetDevice> device, Ptr<QueueDiscItem> item)
     if (!success)
     {
         m_bufferOverflowTrace(pkt);
+        std::cout<<"switch: "<<Simulator::GetContext()<<" drop pkt from port "<<inPortIndex<<" with priority: "<<(uint32_t)inQueuePriority<<" size: "<<pkt->GetSize()<<std::endl;
         return;
     }
     const PortInfo& port = m_buffer.GetPort(inPortIndex);

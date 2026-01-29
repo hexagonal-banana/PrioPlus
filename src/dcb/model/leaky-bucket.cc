@@ -25,7 +25,7 @@ namespace ns3
         : m_rate(rate),
           m_capacity(capacity),
           m_availableTokens(capacity),
-          m_RefillInterval(NanoSeconds(500)),
+          m_RefillInterval(NanoSeconds(50)),
           m_RefillCallback(cb)
     {
         NS_LOG_FUNCTION(this << rate << capacity);
