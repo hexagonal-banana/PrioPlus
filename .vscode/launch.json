@@ -100,7 +100,7 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
-                "config/credit-spary/cc-expresspass-1to1-4flow.json"
+                "config/credit-spary/cc-expresspass-1to1.json"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

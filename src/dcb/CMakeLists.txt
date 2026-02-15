@@ -43,6 +43,7 @@ build_lib(
 	  model/leaky-bucket.cc
 	  model/rocev2-expresspass.cc
 	  model/rocev2-credit-spray.cc
+	  model/rocev2-homa.cc
 	  utils/hpcc-header.cc
 	  utils/poseidon-header.cc
 	  utils/pfc-frame.cc
@@ -90,6 +91,7 @@ build_lib(
 	  model/leaky-bucket.h
 	  model/rocev2-expresspass.h
 	  model/rocev2-credit-spray.h
+	  model/rocev2-homa.h
 	  utils/hpcc-header.h
 	  utils/poseidon-header.h
 	  utils/pfc-frame.h

@@ -156,8 +156,8 @@ RoCEv2Socket::DoSendTo(Ptr<Packet> payload, Ipv4Address daddr, Ptr<Ipv4Route> ro
     m_stats->nTotalSizePkts += (payload->GetSize() + mss - 1) / mss;
     m_stats->nTotalSizeBytes += payload->GetSize();
 
-    m_txBuffer.RecvPayload(payload, daddr, route, mss);
     m_sockState->SetFlowTotalSize(payload->GetSize());
+    m_txBuffer.RecvPayload(payload, daddr, route, mss);
 }
 
 void
@@ -285,10 +285,13 @@ RoCEv2Socket::SendPendingPacket()
     // [[maybe_unused]] const auto& [_, rocev2Header, payload, daddr, route] =
     //     m_txBuffer.PeekNextShouldSend();
     const DcbTxBuffer::DcbTxBufferItem& item = m_txBuffer.PopNextShouldSend();
+    std::cout << "psn"
+              << " " << item.m_psn << std::endl;
     const uint32_t sz =
         item.m_payload->GetSize() + m_innerProto->GetHeaderSize() + m_ccOps->GetExtraHeaderSize();
 
-    if(m_ackMode==RECEIVER_DRIVEN)m_sockState->SetCredit(m_sockState->GetCredit() - totalPacketSize);
+    if (m_ackMode == RECEIVER_DRIVEN)
+        m_sockState->SetCredit(m_sockState->GetCredit() - totalPacketSize);
     DoSendDataPacket(item);
 
     // Control the send rate by interval of sending packets.
@@ -357,10 +360,11 @@ RoCEv2Socket::ForwardUp(Ptr<Packet> packet,
                         uint32_t port,
                         Ptr<Ipv4Interface> incomingInterface)
 {
-    if(m_flowState==FINISHED){
+    if (m_flowState == FINISHED)
+    {
         return;
     }
-    
+
     RoCEv2Header rocev2Header;
     packet->RemoveHeader(rocev2Header);
 
@@ -422,11 +426,13 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
         // Note that the psn in ACK's BTH is expected PSN, not the PSN of the ACKed packet
         if (roce.GetPSN() != 0) // In RECEIVER_DRIVEN mode, the PSN of the ACKed packet could be 0
         {
+            std::cout << "ACK to  " << roce.GetPSN() - 1 << std::endl;
             m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
         }
 
         if (m_txBuffer.IsSendFinish())
         {
+            std::cout << "SendFinish" << std::endl;
             // last ACk received, flow finshed
             Finish();
         }
@@ -486,7 +492,7 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
     NS_LOG_FUNCTION(this << packet);
 
     CreditRequestTag crTag;
-    if (packet->PeekPacketTag(crTag)&&crTag.IsRequest())
+    if (packet->PeekPacketTag(crTag) && crTag.IsRequest())
     {
         m_rxState.ccOps->UpdateStateWithOutbandPkt(packet, roce, 0);
         return;
@@ -1030,7 +1036,7 @@ void
 RoCEv2Socket::Finish()
 {
     NS_LOG_FUNCTION(this);
-    if(m_flowState == FINISHED)
+    if (m_flowState == FINISHED)
     {
         return;
     }
@@ -1071,7 +1077,8 @@ void
 RoCEv2Socket::RetransmissionTimeout()
 {
     NS_LOG_FUNCTION(this);
-    if(m_flowState==FINISHED)return;
+    if (m_flowState == FINISHED)
+        return;
     if (m_retxMode == RoCEv2RetxMode::IRN && m_txBuffer.GetOnTheFly() > m_irnPktThresh)
     {
         // last time schedule retx use rto_low
@@ -1099,10 +1106,11 @@ RoCEv2Socket::RetransmissionTimeout()
     else if (m_retxMode == RoCEv2RetxMode::RTO_ONLY)
     {
         // Retransmit the first unacked packet
-        //m_sockState->SetCwnd(0);
+        // m_sockState->SetCwnd(0);
         m_sockState->SetCredit(0);
         m_txBuffer.RetransmitFrom(m_txBuffer.GetFrontPsn());
-        std::cout << "Retransmission timeout in RTO_ONLY mode, retransmit from psn " << m_txBuffer.GetFrontPsn() << std::endl;
+        std::cout << "Retransmission timeout in RTO_ONLY mode, retransmit from psn "
+                  << m_txBuffer.GetFrontPsn() << std::endl;
     }
     else if (m_retxMode == RoCEv2RetxMode::NONE)
     {
@@ -1204,12 +1212,13 @@ RoCEv2Socket::SendOutbandPkt(uint32_t psn,
     }
     else
     {
+        std::cout << "send outband pkt  " << m_rxState.rxBuffer->GetExpectedPsn() << std::endl;
         // Generate standard ACK packet carrying the provided PSN
         packet = RoCEv2L4Protocol::GenerateACK(m_endPoint->GetLocalPort(),
                                                m_endPoint->GetPeerPort(),
                                                m_rxState.rxBuffer->GetExpectedPsn(),
-                                            6+random()%9);
-        //TODO: modify payload size in ccops
+                                               6 + random() % 9);
+        // TODO: modify payload size in ccops
     }
 
     for (const auto& tag : packetTags)
@@ -1601,6 +1610,7 @@ DcbTxBuffer::GetEndPsn() const
 bool
 DcbTxBuffer::IsSendFinish() const
 {
+    std::cout << "check finish  " << m_frontPsn << "  " << m_endPsn << std::endl;
     return m_frontPsn == m_endPsn;
 }
 
@@ -1801,7 +1811,7 @@ DcbRxBuffer::Add(uint32_t psn, Ipv4Header ipv4, RoCEv2Header roce, Ptr<Packet> p
     {
         m_buffer.emplace(psn, DcbRxBufferItem(ipv4, roce, payload));
     }
-    
+
     // Check and forward the in order packets
     while (m_buffer.find(m_expectedPsn) != m_buffer.end())
     {
@@ -1810,6 +1820,7 @@ DcbRxBuffer::Add(uint32_t psn, Ipv4Header ipv4, RoCEv2Header roce, Ptr<Packet> p
         m_buffer.erase(m_expectedPsn);
         // TODO No warp around check
         m_expectedPsn++;
+        std::cout << "add m_psn from" << m_expectedPsn - 1 << "to" << m_expectedPsn << std::endl;
     }
 }
 
@@ -1847,8 +1858,11 @@ RoCEv2SocketState::GetTypeId()
 
 RoCEv2SocketState::RoCEv2SocketState()
     : m_rateRatio(1.),
-      m_cwnd(UINT64_MAX >> 1), 
-      m_credit(UINT64_MAX >> 1)
+      m_cwnd(UINT64_MAX >> 1),
+      m_credit(UINT64_MAX >> 1),
+      m_packetSize(1054),
+      m_mss(1000),
+      m_flowTotalSize(0)
 {
 }
 

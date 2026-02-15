@@ -94,9 +94,13 @@ class RoCEv2CongestionOps : public Object
      *
      * Note: This function has the pointer of the packet to send as parameter, which has the
      * RoCev2Header and is used after calling this function in RoCEv2Socket::DoSendDataPacket. So,
-     * the packet should be carefully modified in this.
+     * When the sender sending out a packet, recover a timeslot into the map.
      */
     virtual void UpdateStateSend(Ptr<Packet> packet)
+    {
+    }
+
+    virtual void SetFlowId(uint32_t flowId)
     {
     }
 
