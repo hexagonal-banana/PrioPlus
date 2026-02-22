@@ -60,6 +60,7 @@ void
 RoCEv2CreditCc::SetReady()
 {
     NS_LOG_FUNCTION(this);
+    std::cout<<"SendCreditRequest"<<std::endl;
     // send credit request and set timer for it
     this->SendCreditRequest(m_sockState->GetBaseRtt() * 10); // Magic number for now
 }

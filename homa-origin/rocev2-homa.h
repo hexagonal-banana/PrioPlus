@@ -16,10 +16,11 @@
 
 #include "rocev2-credit-cc.h"
 
-#include "ns3/event-id.h"
-#include "ns3/traced-value.h"
-
 #include <map>
+#include <memory>
+#include <ostream>
+#include <string>
+#include <vector>
 
 namespace ns3
 {
@@ -60,19 +61,45 @@ class HomaGrantTag : public Tag
     virtual void Print(std::ostream& os) const;
 
     HomaGrantTag();
-    HomaGrantTag(uint32_t flowId, uint32_t grantOffset, uint32_t priority);
+    HomaGrantTag(uint32_t flowId, uint32_t grantOffset, uint8_t priority);
 
     void SetFlowId(uint32_t id);
     uint32_t GetFlowId() const;
     void SetGrantOffset(uint32_t os);
     uint32_t GetGrantOffset() const;
-    void SetPriority(uint32_t p);
-    uint32_t GetPriority() const;
+    void SetPriority(uint8_t p);
+    uint8_t GetPriority() const;
 
   private:
     uint32_t m_flowId;
     uint32_t m_grantOffset;
-    uint32_t m_priority;
+    uint8_t m_priority;
+};
+
+class HomaResendTag : public Tag
+{
+  public:
+    static TypeId GetTypeId(void);
+    virtual TypeId GetInstanceTypeId(void) const;
+    virtual uint32_t GetSerializedSize(void) const;
+    virtual void Serialize(TagBuffer i) const;
+    virtual void Deserialize(TagBuffer i);
+    virtual void Print(std::ostream& os) const;
+
+    HomaResendTag();
+    HomaResendTag(uint32_t flowId, uint32_t offset, uint32_t length);
+
+    void SetFlowId(uint32_t id);
+    uint32_t GetFlowId() const;
+    void SetOffset(uint32_t os);
+    uint32_t GetOffset() const;
+    void SetLength(uint32_t len);
+    uint32_t GetLength() const;
+
+  private:
+    uint32_t m_flowId;
+    uint32_t m_offset;
+    uint32_t m_length;
 };
 
 class HomaScheduler : public Object
@@ -84,7 +111,8 @@ class HomaScheduler : public Object
 
     void UpdateFlow(uint32_t flowId, uint32_t msgSize, uint32_t recvedBytes, Ptr<RoCEv2Homa> flow);
     void RemoveFlow(uint32_t flowId);
-    void CheckSchedule(uint32_t packetSize);
+    void CheckSchedule(uint32_t packetSize, uint32_t rttBytes, uint32_t overcommitLevel);
+    uint32_t GetActiveFlowCount() const;
 
   private:
     struct FlowState
@@ -105,6 +133,9 @@ class HomaScheduler : public Object
 
     std::map<uint32_t, FlowState> m_activeFlows;
     uint32_t m_overcommitLevel;
+    uint32_t m_numScheduledPriorities;
+    uint32_t m_numUnscheduledPriorities;
+    uint32_t m_rttBytes;
 };
 
 class RoCEv2Homa : public RoCEv2CreditCc
@@ -136,23 +167,23 @@ class RoCEv2Homa : public RoCEv2CreditCc
     {
         return m_stats;
     }
-    
+
     virtual void Init();
-    virtual void SetReady();
-    void SetFlowId(uint32_t flowId);
+    void SetReady() override;
+    void SetFlowId(uint32_t flowId) override;
     uint32_t GetFlowId() const;
 
-    virtual void UpdateStateSend(Ptr<Packet> packet);
-    virtual void UpdateStateRecvData(Ptr<Packet> packet, const RoCEv2Header& roce);
-    virtual void UpdateStateWithRcvACK(Ptr<Packet> packet,
-                                       const RoCEv2Header& roce,
-                                       const uint32_t senderNextPSN);
-    //virtual void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
-                                          // const RoCEv2Header& roce,
-                                         //  const uint32_t senderNextPSN);
-    //virtual void SendCreditRequest(Time rto);
+    void UpdateStateSend(Ptr<Packet> packet) override;
+    void UpdateStateRecvData(Ptr<Packet> packet, const RoCEv2Header& roce) override;
+    void UpdateStateWithRcvACK(Ptr<Packet> packet,
+                               const RoCEv2Header& roce,
+                               const uint32_t senderNextPSN) override;
+    void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
+                                   const RoCEv2Header& roce,
+                                   const uint32_t senderNextPSN) override;
 
-    void SendGrantACK(uint32_t grantOffset, uint32_t priority);
+    void SendGrantACK(uint32_t grantOffset, uint8_t priority);
+    void SendResend(uint32_t offset, uint32_t length);
 
   private:
     Ptr<HomaScheduler> GetNodeScheduler();
@@ -161,11 +192,20 @@ class RoCEv2Homa : public RoCEv2CreditCc
     uint32_t m_msgSize;
     uint64_t m_bytesSended;
     uint64_t m_recvedBytes;
-    
+
     uint32_t m_unscheduledBytes;
     uint32_t m_unscheduledPrio;
     uint32_t m_scheduledPrio;
-    uint32_t m_grantPrio;
+
+    // Homa Design
+    uint32_t m_rttBytes;
+    uint32_t m_overcommitLevel;
+    bool m_isIncast;
+    uint32_t m_outstandingRpcThreshold;
+    EventId m_resendEvent;
+    Time m_resendTimeout;
+
+    void ProcessResend();
 
     static std::map<uint32_t, Ptr<HomaScheduler>> m_nodeSchedulers;
 };

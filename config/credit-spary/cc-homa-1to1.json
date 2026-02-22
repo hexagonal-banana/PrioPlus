@@ -29,7 +29,7 @@
             "Thigh": "16us"
         },
         "RoCEv2Socket": {
-            "RetxMode": "NONE",
+            "RetxMode": "RTO_ONLY",
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
