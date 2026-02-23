@@ -14,13 +14,14 @@
 #ifndef ROCEV2_HOMA_H
 #define ROCEV2_HOMA_H
 
-#include "ns3/rocev2-socket.h"
-#include "ns3/rocev2-header.h"
-#include "ns3/ipv4-address.h"
-#include "ns3/tag.h"
 #include "ns3/event-id.h"
+#include "ns3/ipv4-address.h"
 #include "ns3/nstime.h"
-#include <map>  // 添加map容器支持
+#include "ns3/rocev2-header.h"
+#include "ns3/rocev2-socket.h"
+#include "ns3/tag.h"
+
+#include <map> // 添加map容器支持
 
 namespace ns3
 {
@@ -102,38 +103,6 @@ class HomaResendTag : public Tag
     uint32_t m_length;
 };
 
-class HomaScheduler : public Object
-{
-  public:
-    static TypeId GetTypeId();
-    HomaScheduler();
-    ~HomaScheduler();
-
-    void UpdateFlow(uint32_t flowId, uint32_t msgSize, uint32_t recvedBytes, Ptr<RoCEv2Homa> flow);
-    void RemoveFlow(uint32_t flowId);
-    void CheckSchedule(uint32_t packetSize);
-
-  private:
-    struct FlowState
-    {
-        uint32_t msgSize;
-        uint32_t recvedBytes;
-        uint32_t grantedBytes;
-        Time lastUpdate;
-        Ptr<RoCEv2Homa> flow;
-
-        FlowState()
-            : msgSize(0),
-              recvedBytes(0),
-              grantedBytes(0)
-        {
-        }
-    };
-
-    std::map<uint32_t, FlowState> m_activeFlows;
-    uint32_t m_overcommitLevel;
-};
-
 class RoCEv2Homa : public RoCEv2CreditCc
 {
   public:
@@ -163,7 +132,44 @@ class RoCEv2Homa : public RoCEv2CreditCc
     {
         return m_stats;
     }
-    
+
+    class HomaScheduler : public Object
+    {
+      public:
+        static TypeId GetTypeId();
+        HomaScheduler();
+        ~HomaScheduler();
+
+        void UpdateFlow(uint32_t flowId,
+                        uint32_t msgSize,
+                        uint32_t recvedBytes,
+                        Ptr<RoCEv2Homa> flow);
+        void RemoveFlow(uint32_t flowId);
+        void AddReadyToSendGrant(uint32_t flowId);
+        void CheckSchedule(uint32_t packetSize);
+
+      private:
+        struct FlowState
+        {
+            uint32_t msgSize;
+            uint32_t recvedBytes;
+            uint32_t grantedBytes;
+            Time lastUpdate;
+            Ptr<RoCEv2Homa> flow;
+
+            FlowState()
+                : msgSize(0),
+                  recvedBytes(0),
+                  grantedBytes(0)
+            {
+            }
+        };
+
+        std::map<uint32_t, FlowState> m_activeFlows;
+        std::vector<uint32_t> m_readyToSendQueue;
+        uint32_t m_overcommitLevel;
+    };
+
     virtual void Init();
     virtual void SetReady();
     void SetFlowId(uint32_t flowId);
@@ -174,44 +180,39 @@ class RoCEv2Homa : public RoCEv2CreditCc
     virtual void UpdateStateWithRcvACK(Ptr<Packet> packet,
                                        const RoCEv2Header& roce,
                                        const uint32_t senderNextPSN);
-    //virtual void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
-                                          // const RoCEv2Header& roce,
-                                          // const uint32_t senderNextPSN);
-    //virtual void SendCreditRequest(Time rto);
 
     void SendGrantACK(uint32_t grantOffset, uint32_t priority);
-    
+
     void SetPacketReceived(uint32_t packetOffset, uint32_t packetSize);
     bool IsPacketReceived(uint32_t packetOffset) const;
     uint32_t GetUniqueReceivedBytes() const;
     void ProcessOutOfOrderBuffer();
 
   private:
-    Ptr<HomaScheduler> GetNodeScheduler();
     std::shared_ptr<Stats> m_stats; //!< Statistics
     uint32_t m_flowId;
     uint32_t m_msgSize;
     uint64_t m_bytesSended;
     uint64_t m_recvedBytes;
     uint64_t m_uniqueRecvedBytes;
-    
+
     uint32_t m_unscheduledBytes;
-    uint32_t m_rttBytes;              // RTT字节数
+    uint32_t m_rttBytes; // RTT字节数
     uint32_t m_unscheduledPrio;
     uint32_t m_scheduledPrio;
     uint32_t m_grantPrio;
 
     // 乱序和丢包处理相关成员变量
-    uint32_t m_expectedPsn;           // 期望的下一个包序列号
-    uint32_t m_lostPacketCount;       // 丢包计数
-    std::map<uint32_t, Ptr<Packet>> m_outOfOrderBuffer;  // 乱序包缓冲区
-    
+    uint32_t m_expectedPsn;                             // 期望的下一个包序列号
+    uint32_t m_lostPacketCount;                         // 丢包计数
+    std::map<uint32_t, Ptr<Packet>> m_outOfOrderBuffer; // 乱序包缓冲区
+
     // 重传情况下recvedBytes统计相关成员变量
-    std::vector<bool> m_receivedPackets;   // 跟踪哪些包偏移量已被接收
-    std::vector<uint32_t> m_packetSizes;   // 跟踪每个接收包的大小
-  
-    
-    static std::map<uint32_t, Ptr<HomaScheduler>> m_nodeSchedulers;
+    std::vector<bool> m_receivedPackets; // 跟踪哪些包偏移量已被接收
+    std::vector<uint32_t> m_packetSizes; // 跟踪每个接收包的大小
+    std::shared_ptr<HomaScheduler> m_nodeScheduler;
+
+    // static std::map<uint32_t, Ptr<HomaScheduler>> m_nodeSchedulers;
 };
 
 } // namespace ns3

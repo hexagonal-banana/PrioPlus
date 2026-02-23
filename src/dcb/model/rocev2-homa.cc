@@ -15,10 +15,10 @@
 
 #include "rocev2-socket.h"
 
+#include "ns3/ipv4-global-routing.h"
 #include "ns3/log.h"
 #include "ns3/node.h"
 #include "ns3/simulator.h"
-#include "ns3/ipv4-global-routing.h"
 
 #include <iostream>
 
@@ -28,8 +28,6 @@ namespace ns3
 NS_LOG_COMPONENT_DEFINE("RoCEv2Homa");
 
 NS_OBJECT_ENSURE_REGISTERED(RoCEv2Homa);
-
-std::map<uint32_t, Ptr<HomaScheduler>> RoCEv2Homa::m_nodeSchedulers;
 
 TypeId
 RoCEv2Homa::GetTypeId()
@@ -54,10 +52,10 @@ RoCEv2Homa::GetTypeId()
                                           MakeUintegerAccessor(&RoCEv2Homa::m_scheduledPrio),
                                           MakeUintegerChecker<uint32_t>())
                             .AddAttribute("GrantPrio",
-                                           "Priority for grants",
-                                           UintegerValue(0x1F), // Highest Priority;
-                                           MakeUintegerAccessor(&RoCEv2Homa::m_grantPrio),
-                                           MakeUintegerChecker<uint32_t>());
+                                          "Priority for grants",
+                                          UintegerValue(0x1F), // Highest Priority;
+                                          MakeUintegerAccessor(&RoCEv2Homa::m_grantPrio),
+                                          MakeUintegerChecker<uint32_t>());
     return tid;
 }
 
@@ -100,16 +98,17 @@ RoCEv2Homa::Init()
     m_rttBytes = 10000;
     m_unscheduledPrio = 0x1F; // Scheduled use 0, 1; Unscheduled use 2-7
     m_scheduledPrio = 0x00;
-    
+    m_nodeScheduler = std::make_shared<HomaScheduler>();
+
     // 初始化乱序和丢包处理相关变量
     m_expectedPsn = 0;
     m_lostPacketCount = 0;
     m_outOfOrderBuffer.clear();
-    
+
     // 初始化包偏移量跟踪数组
     m_receivedPackets.clear();
     m_packetSizes.clear();
-    
+
     m_stats = std::make_shared<Stats>();
 }
 
@@ -118,27 +117,30 @@ RoCEv2Homa::SetReady()
 {
     NS_LOG_FUNCTION(this);
     // Initial credit allows sending unscheduled bytes
-    
+
     // Calculate RTTBytes: RTT × Bandwidth
     if (m_sockState->GetDeviceRate() != nullptr && m_sockState->GetBaseRtt().IsStrictlyPositive())
     {
         // RTTBytes = Bandwidth (bytes/sec) × RTT (seconds)
-        uint64_t rttBytes = static_cast<uint64_t>(
-            m_sockState->GetDeviceRate()->GetBitRate() / 8 * m_sockState->GetBaseRtt().GetSeconds());
-        
+        uint64_t rttBytes = static_cast<uint64_t>(m_sockState->GetDeviceRate()->GetBitRate() / 8 *
+                                                  m_sockState->GetBaseRtt().GetSeconds());
+
         // Set m_unscheduledBytes to RTTBytes to fully utilize the link in first RTT
-        m_unscheduledBytes = static_cast<uint32_t>(std::min(rttBytes, static_cast<uint64_t>(UINT32_MAX)));
-        
-        std::cout << "Homa: Calculated RTTBytes = " << rttBytes 
+        m_unscheduledBytes =
+            static_cast<uint32_t>(std::min(rttBytes, static_cast<uint64_t>(UINT32_MAX)));
+
+        std::cout << "Homa: Calculated RTTBytes = " << rttBytes
                   << " bytes (Bandwidth: " << m_sockState->GetDeviceRate()->GetBitRate() << " bps"
-                  << ", RTT: " << m_sockState->GetBaseRtt().GetMicroSeconds() << " us)" << std::endl;
-        std::cout << "Homa: Setting UnscheduledBytes to " << m_unscheduledBytes << " bytes" << std::endl;
+                  << ", RTT: " << m_sockState->GetBaseRtt().GetMicroSeconds() << " us)"
+                  << std::endl;
+        std::cout << "Homa: Setting UnscheduledBytes to " << m_unscheduledBytes << " bytes"
+                  << std::endl;
     }
     else
     {
         std::cout << "Homa: Warning - Cannot calculate RTTBytes, using default value" << std::endl;
     }
-    
+
     // Set initial credit to allow sending unscheduled bytes
     m_sockState->SetCredit(m_unscheduledBytes);
 }
@@ -160,42 +162,42 @@ RoCEv2Homa::UpdateStateSend(Ptr<Packet> packet)
     if (m_msgSize == 0)
     {
         m_msgSize = m_sockState->GetFlowTotalSize();
-        m_flowId=m_sockState->GetFlowId();
+        m_flowId = m_sockState->GetFlowId();
     }
 
     if (m_flowId == 0)
     {
-        std::cout<<"warning:m_flowId=0 "<<std::endl;
+        std::cout << "warning:m_flowId=0 " << std::endl;
     }
-    std::cout<<"flow="<<m_flowId<<std::endl;
+    std::cout << "flow=" << m_flowId << std::endl;
     HomaDataTag tag(m_flowId, m_msgSize);
     packet->AddPacketTag(tag);
     // Priority Logic: Use message size distribution (CDF approximation)
     // For now, simple logic: shorter messages get higher unscheduled priority
     uint32_t prio = m_unscheduledPrio;
     if (m_msgSize < 1000)
-        prio = 0x1F;//7
+        prio = 0x1F; // 7
     else if (m_msgSize < 10000)
-        prio = 0x1A;//6
+        prio = 0x1A; // 6
     else if (m_msgSize < 100000)
-        prio = 0x16;//5
+        prio = 0x16; // 5
     else if (m_msgSize < 1000000)
-        prio = 0x10;//4
-    else if(m_msgSize < 10000000)
-        prio = 0x0F;//3
+        prio = 0x10; // 4
+    else if (m_msgSize < 10000000)
+        prio = 0x0F; // 3
     else
-        prio = 0x0A;//2
+        prio = 0x0A; // 2
 
     // Priority Logic
     SocketIpTosTag ipTosTag;
     if (m_bytesSended < m_unscheduledBytes)
     {
-        std::cout<<"unscheduled data"<<std::endl;
-        ipTosTag.SetTos(prio); 
+        std::cout << "unscheduled data" << std::endl;
+        ipTosTag.SetTos(prio);
     }
     else
     {
-        std::cout<<"scheduled data"<<std::endl;
+        std::cout << "scheduled data" << std::endl;
         ipTosTag.SetTos(m_scheduledPrio);
     }
     packet->ReplacePacketTag(ipTosTag);
@@ -223,55 +225,54 @@ RoCEv2Homa::UpdateStateRecvData(Ptr<Packet> packet, const RoCEv2Header& roce)
     // 获取包偏移量（使用PSN作为偏移量）
     uint32_t packetOffset = roce.GetPSN();
     uint32_t packetSize = packet->GetSize();
-    
+
     // 更新总接收字节数（包括重传）
     m_recvedBytes += packetSize;
-    
+
     // 使用包偏移量进行精确跟踪，避免重传重复计算
     SetPacketReceived(packetOffset, packetSize);
-    
+
     // 添加序列号跟踪用于乱序检测
     uint32_t currentPsn = roce.GetPSN();
-    
+
     // 乱序检测和丢包统计
     if (m_expectedPsn == 0)
     {
         m_expectedPsn = currentPsn; // 初始化期望PSN
     }
-    
+
     if (currentPsn > m_expectedPsn)
     {
         // 检测到丢包 - 统计丢失的包数量
         uint32_t lostPkts = currentPsn - m_expectedPsn;
         m_lostPacketCount += lostPkts;
-        std::cout << "Homa: Detected " << lostPkts << " lost packets in flow " 
-                  << m_flowId << " (expected " << m_expectedPsn 
-                  << ", got " << currentPsn << ")" << std::endl;
+        std::cout << "Homa: Detected " << lostPkts << " lost packets in flow " << m_flowId
+                  << " (expected " << m_expectedPsn << ", got " << currentPsn << ")" << std::endl;
     }
     else if (currentPsn < m_expectedPsn)
     {
         // 乱序包 - 记录但不计入丢包
-        std::cout << "Homa: Out-of-order packet detected in flow " 
-                  << m_flowId << " (expected " << m_expectedPsn 
-                  << ", got " << currentPsn << ")" << std::endl;
+        std::cout << "Homa: Out-of-order packet detected in flow " << m_flowId << " (expected "
+                  << m_expectedPsn << ", got " << currentPsn << ")" << std::endl;
         // 将乱序包加入缓冲区等待重排
         m_outOfOrderBuffer[currentPsn] = packet->Copy();
     }
-    
+
     // 更新期望的下一个PSN（只在包是按序或超前到达时更新）
     if (currentPsn >= m_expectedPsn)
     {
         m_expectedPsn = currentPsn + 1;
     }
-    
+
     // 处理缓冲区中的乱序包
     ProcessOutOfOrderBuffer();
 
-    Ptr<HomaScheduler> scheduler = GetNodeScheduler();
+    std::shared_ptr<HomaScheduler> scheduler = m_nodeScheduler;
     if (scheduler)
     {
         // 使用unique bytes进行调度决策，避免重传干扰
         scheduler->UpdateFlow(m_flowId, m_msgSize, m_uniqueRecvedBytes, this);
+        scheduler->AddReadyToSendGrant(m_flowId);
         scheduler->CheckSchedule(m_sockState->GetPacketSize());
     }
 }
@@ -285,12 +286,12 @@ RoCEv2Homa::ProcessOutOfOrderBuffer()
     {
         Ptr<Packet> bufferedPacket = m_outOfOrderBuffer[m_expectedPsn];
         m_outOfOrderBuffer.erase(m_expectedPsn);
-        
+
         // 注意：字节数已经在主流程中更新过了，这里只需要更新期望PSN
         m_expectedPsn++;
-        
-        std::cout << "Homa: Processed buffered packet, new expected PSN: " 
-                  << m_expectedPsn << std::endl;
+
+        std::cout << "Homa: Processed buffered packet, new expected PSN: " << m_expectedPsn
+                  << std::endl;
     }
 }
 
@@ -306,14 +307,14 @@ RoCEv2Homa::UpdateStateWithRcvACK(Ptr<Packet> packet,
     {
         // This is a GRANT
         uint32_t grantedOffset = tag.GetGrantOffset();
-        
+
         uint64_t currentCredit = m_sockState->GetCredit();
         // if (grantedOffset > currentCredit)
         // {
         std::cout << "Rcv ACK" << grantedOffset << " " << currentCredit << std::endl;
         m_sockState->SetCredit(grantedOffset + currentCredit);
         m_scheduledPrio = tag.GetPriority();
-        std::cout<<"now m_scheduledPrio="<<m_scheduledPrio<<std::endl;
+        std::cout << "now m_scheduledPrio=" << m_scheduledPrio << std::endl;
         // Trigger sending
         if (!m_sendPendingDataCb.IsNull())
         {
@@ -321,7 +322,8 @@ RoCEv2Homa::UpdateStateWithRcvACK(Ptr<Packet> packet,
         }
         // }
     }
-    else{
+    else
+    {
         // Trigger sending
         if (!m_sendPendingDataCb.IsNull())
         {
@@ -334,31 +336,34 @@ void
 RoCEv2Homa::SendGrantACK(uint32_t grantOffset, uint32_t priority)
 {
     NS_LOG_FUNCTION(this << grantOffset << (uint32_t)priority);
-    std::cout<<"send priority"<<(uint32_t)priority<<std::endl;
-    
+    std::cout << "send priority" << (uint32_t)priority << std::endl;
+
     // Calculate optimal grant size based on RTT and bandwidth
     uint32_t optimalGrantSize = m_sockState->GetPacketSize(); // Default to packet size
-    
-   /* if (m_sockState->GetDeviceRate() != nullptr && m_sockState->GetBaseRtt().IsStrictlyPositive())
-    {
-        // Calculate how many packets can be sent per RTT to maintain full link utilization
-        uint64_t rttBytes = static_cast<uint64_t>(
-            m_sockState->GetDeviceRate()->GetBitRate() / 8 * m_sockState->GetBaseRtt().GetSeconds());
-        
-        // Grant enough credit to send approximately one RTT worth of data
-        // But cap it to prevent excessive buffering
-        uint32_t maxGrant = static_cast<uint32_t>(std::min(rttBytes / 2, static_cast<uint64_t>(1000000))); // Cap at 1MB
-        optimalGrantSize = std::min(maxGrant, grantOffset);
-        
-        std::cout << "Homa Grant: RTTBytes=" << rttBytes 
-                  << ", GrantOffset=" << grantOffset 
-                  << ", OptimalGrant=" << optimalGrantSize << std::endl;
-    }*/
-    
+
+    /* if (m_sockState->GetDeviceRate() != nullptr &&
+     m_sockState->GetBaseRtt().IsStrictlyPositive())
+     {
+         // Calculate how many packets can be sent per RTT to maintain full link utilization
+         uint64_t rttBytes = static_cast<uint64_t>(
+             m_sockState->GetDeviceRate()->GetBitRate() / 8 *
+     m_sockState->GetBaseRtt().GetSeconds());
+
+         // Grant enough credit to send approximately one RTT worth of data
+         // But cap it to prevent excessive buffering
+         uint32_t maxGrant = static_cast<uint32_t>(std::min(rttBytes / 2,
+     static_cast<uint64_t>(1000000))); // Cap at 1MB optimalGrantSize = std::min(maxGrant,
+     grantOffset);
+
+         std::cout << "Homa Grant: RTTBytes=" << rttBytes
+                   << ", GrantOffset=" << grantOffset
+                   << ", OptimalGrant=" << optimalGrantSize << std::endl;
+     }*/
+
     HomaGrantTag tag(m_flowId, optimalGrantSize, priority);
-   /* std::cout << "Sending Grant ACK with optimal size: " << optimalGrantSize 
-              << ", priority: " << tag.GetPriority() << std::endl;*/
-    
+    /* std::cout << "Sending Grant ACK with optimal size: " << optimalGrantSize
+               << ", priority: " << tag.GetPriority() << std::endl;*/
+
     // Also we need to specify CongestionTypeTag to route it to correct CC on receiver?
     // Actually out-of-band packets are demuxed by RoCEv2Socket to the correct flow.
     // If it's a "credit" packet, RoCEv2Socket might handle it?
@@ -373,17 +378,6 @@ RoCEv2Homa::SendGrantACK(uint32_t grantOffset, uint32_t priority)
     m_sendOutbandPktCb(0, false, packetTags);
 }
 
-Ptr<HomaScheduler>
-RoCEv2Homa::GetNodeScheduler()
-{
-    uint32_t nodeId = Simulator::GetContext();
-    if (m_nodeSchedulers.find(nodeId) == m_nodeSchedulers.end())
-    {
-        m_nodeSchedulers[nodeId] = CreateObject<HomaScheduler>();
-    }
-    return m_nodeSchedulers[nodeId];
-}
-
 uint32_t
 RoCEv2Homa::GetFlowId() const
 {
@@ -394,28 +388,27 @@ void
 RoCEv2Homa::SetPacketReceived(uint32_t packetOffset, uint32_t packetSize)
 {
     NS_LOG_FUNCTION(this << packetOffset << packetSize);
-    
+
     // 扩展数组大小如果需要
     if (packetOffset >= m_receivedPackets.size())
     {
         m_receivedPackets.resize(packetOffset + 1, false);
         m_packetSizes.resize(packetOffset + 1, 0);
     }
-    
+
     // 只有新接收的包才更新unique bytes
     if (!m_receivedPackets[packetOffset])
     {
         m_receivedPackets[packetOffset] = true;
         m_packetSizes[packetOffset] = packetSize;
         m_uniqueRecvedBytes += packetSize;
-        std::cout << "Homa: New packet received at offset " << packetOffset 
-                  << ", size " << packetSize 
-                  << ", unique bytes now: " << m_uniqueRecvedBytes << std::endl;
+        std::cout << "Homa: New packet received at offset " << packetOffset << ", size "
+                  << packetSize << ", unique bytes now: " << m_uniqueRecvedBytes << std::endl;
     }
     else
     {
-        std::cout << "Homa: Duplicate packet detected at offset " << packetOffset 
-                  << ", size " << packetSize << std::endl;
+        std::cout << "Homa: Duplicate packet detected at offset " << packetOffset << ", size "
+                  << packetSize << std::endl;
     }
 }
 
@@ -451,34 +444,32 @@ RoCEv2Homa::Stats::CollectAndCheck()
 // HomaScheduler Implementation
 // -------------------------------------------------------------------------
 
-NS_OBJECT_ENSURE_REGISTERED(HomaScheduler);
-
 TypeId
-HomaScheduler::GetTypeId()
+RoCEv2Homa::HomaScheduler::GetTypeId()
 {
     static TypeId tid =
         TypeId("ns3::HomaScheduler").SetParent<Object>().AddConstructor<HomaScheduler>();
     return tid;
 }
 
-HomaScheduler::HomaScheduler()
+RoCEv2Homa::HomaScheduler::HomaScheduler()
 {
-    m_overcommitLevel = 2; 
+    m_overcommitLevel = 1;
 }
 
-HomaScheduler::~HomaScheduler()
+RoCEv2Homa::HomaScheduler::~HomaScheduler()
 {
 }
 
 void
-HomaScheduler::UpdateFlow(uint32_t flowId,
-                          uint32_t msgSize,
-                          uint32_t uniqueRecvedBytes,  // Changed from recvedBytes
-                          Ptr<RoCEv2Homa> flow)
+RoCEv2Homa::HomaScheduler::UpdateFlow(uint32_t flowId,
+                                      uint32_t msgSize,
+                                      uint32_t uniqueRecvedBytes, // Changed from recvedBytes
+                                      Ptr<RoCEv2Homa> flow)
 {
     FlowState& state = m_activeFlows[flowId];
     state.msgSize = msgSize;
-    state.recvedBytes = uniqueRecvedBytes;  // Use unique bytes to avoid retransmission interference
+    state.recvedBytes = uniqueRecvedBytes; // Use unique bytes to avoid retransmission interference
     state.flow = flow;
     state.lastUpdate = Simulator::Now();
     if (state.grantedBytes < uniqueRecvedBytes)
@@ -487,47 +478,65 @@ HomaScheduler::UpdateFlow(uint32_t flowId,
     // 只有当真正接收完所有唯一字节时才移除流
     if (uniqueRecvedBytes >= msgSize)
     {
-        std::cout << "HomaScheduler: Flow " << flowId << " completed with " 
-                  << uniqueRecvedBytes << "/" << msgSize << " unique bytes" << std::endl;
+        std::cout << "HomaScheduler: Flow " << flowId << " completed with " << uniqueRecvedBytes
+                  << "/" << msgSize << " unique bytes" << std::endl;
         Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, flow, 0, 0x00);
         RemoveFlow(flowId);
     }
 }
 
 void
-HomaScheduler::RemoveFlow(uint32_t flowId)
+RoCEv2Homa::HomaScheduler::RemoveFlow(uint32_t flowId)
 {
     m_activeFlows.erase(flowId);
 }
 
 void
-HomaScheduler::CheckSchedule(uint32_t packetSize)
+RoCEv2Homa::HomaScheduler::AddReadyToSendGrant(uint32_t flowId)
 {
-    // SRPT: Sort flows by remaining bytes
-    std::vector<uint32_t> sortedFlows;
-    for (const auto& [id, state] : m_activeFlows)
+    m_readyToSendQueue.push_back(flowId);
+}
+
+void
+RoCEv2Homa::HomaScheduler::CheckSchedule(uint32_t packetSize)
+{
+    // Clean up completed flows from m_activeFlows
+    for (auto it = m_activeFlows.begin(); it != m_activeFlows.end();)
     {
-        sortedFlows.push_back(id);
-        if (state.recvedBytes >= state.msgSize)
+        if (it->second.recvedBytes >= it->second.msgSize)
         {
-            RemoveFlow(id);
+            it = m_activeFlows.erase(it);
+        }
+        else
+        {
+            ++it;
         }
     }
 
-    std::sort(sortedFlows.begin(), sortedFlows.end(), [this](uint32_t a, uint32_t b) {
+    // Remove invalid flows from m_readyToSendQueue
+    m_readyToSendQueue.erase(std::remove_if(m_readyToSendQueue.begin(),
+                                            m_readyToSendQueue.end(),
+                                            [this](uint32_t id) {
+                                                return m_activeFlows.find(id) ==
+                                                       m_activeFlows.end();
+                                            }),
+                             m_readyToSendQueue.end());
+
+    // SRPT: Sort active ready-to-send grants by remaining bytes
+    std::sort(m_readyToSendQueue.begin(), m_readyToSendQueue.end(), [this](uint32_t a, uint32_t b) {
         uint32_t remA = m_activeFlows[a].msgSize - m_activeFlows[a].recvedBytes;
         uint32_t remB = m_activeFlows[b].msgSize - m_activeFlows[b].recvedBytes;
         return remA < remB;
     });
-
+    if(m_readyToSendQueue.size() > m_overcommitLevel) std::cout<<"Have overcommit"<<std::endl;
     // Grant top N
     uint32_t count = 0;
-    for (uint32_t id : sortedFlows)
+    auto it = m_readyToSendQueue.begin();
+    while (it != m_readyToSendQueue.end() && count < m_overcommitLevel)
     {
-        if (count >= m_overcommitLevel)
-            break;
-
+        uint32_t id = *it;
         FlowState& state = m_activeFlows[id];
+
         uint32_t grantStep = packetSize; // Grant a packet at a time
         uint32_t newGrant = state.grantedBytes + grantStep;
         if (newGrant > state.msgSize)
@@ -535,17 +544,25 @@ HomaScheduler::CheckSchedule(uint32_t packetSize)
 
         if (newGrant >= state.grantedBytes)
         {
-            if(count%2==0){
-            state.flow->SendGrantACK(grantStep, (uint32_t)0); //0x00
+            if (count % 2 == 0)
+            {
+                state.flow->SendGrantACK(grantStep, (uint32_t)0); // 0x00
             }
-            else{
-                //0x06=1
-                state.flow->SendGrantACK(grantStep, (uint32_t)6);//try best to average queue length
+            else
+            {
+                // 0x06=1
+                std::cout << "send in prio 1" << std::endl;
+                state.flow->SendGrantACK(grantStep, (uint32_t)6); // try best to average queue
+                                                                  // length
             }
             state.grantedBytes = newGrant;
         }
+
+        // Pop the grant
+        it = m_readyToSendQueue.erase(it);
         count++;
     }
+    std::cout << "count=" << count << std::endl;
 }
 
 // -------------------------------------------------------------------------
