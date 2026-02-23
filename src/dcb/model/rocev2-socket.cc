@@ -47,6 +47,16 @@ namespace ns3
 
 NS_LOG_COMPONENT_DEFINE("RoCEv2Socket");
 
+// 静态成员变量定义和初始化
+uint32_t RoCEv2SocketState::m_totalflowId = 0;
+
+// 静态方法实现
+uint32_t RoCEv2SocketState::AllocateFlowId()
+{
+    static uint32_t nextFlowId = 1;
+    return nextFlowId++;
+}
+
 NS_OBJECT_ENSURE_REGISTERED(RoCEv2Socket);
 
 std::atomic<uint64_t> g_completedFlows(0);
@@ -1862,8 +1872,15 @@ RoCEv2SocketState::RoCEv2SocketState()
       m_credit(UINT64_MAX >> 1),
       m_packetSize(1054),
       m_mss(1000),
-      m_flowTotalSize(0)
+      m_flowTotalSize(0),
+      m_flowId(0)  // 初始化为0，稍后分配
 {
+    // 静态变量初始化：全局流计数器
+    static uint32_t globalFlowCounter = 0;
+    m_totalflowId = ++globalFlowCounter;
+    
+    // 为当前socket分配唯一的flowId
+    m_flowId = AllocateFlowId();
 }
 
 RoCEv2Socket::Stats::Stats()

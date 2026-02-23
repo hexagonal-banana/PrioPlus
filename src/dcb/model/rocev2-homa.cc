@@ -160,20 +160,14 @@ RoCEv2Homa::UpdateStateSend(Ptr<Packet> packet)
     if (m_msgSize == 0)
     {
         m_msgSize = m_sockState->GetFlowTotalSize();
+        m_flowId=m_sockState->GetFlowId();
     }
 
     if (m_flowId == 0)
     {
-        // Just use pointer address as simple ID if we can't get strict flow ID
-        // Or generate one
-        // m_flowId = (uint32_t)(uintptr_t)this;
-        // Better: use socket ports
-        // But we don't have easy access to IP/Ports here without storing them.
-        // RoCEv2SocketState does not store src/dst IP/Port directly in a convenient way for unique
-        // ID generation? Actually RoCEv2SocketState has m_daddr, but not src addr/port easily.
-        // Let's generate a random ID if 0 or trust the tag if already present?
+        std::cout<<"warning:m_flowId=0 "<<std::endl;
     }
-
+    std::cout<<"flow="<<m_flowId<<std::endl;
     HomaDataTag tag(m_flowId, m_msgSize);
     packet->AddPacketTag(tag);
     // Priority Logic: Use message size distribution (CDF approximation)
