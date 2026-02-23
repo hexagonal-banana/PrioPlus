@@ -95,10 +95,21 @@ RoCEv2Homa::Init()
     m_msgSize = 0;
     m_bytesSended = 0;
     m_recvedBytes = 0;
+    m_uniqueRecvedBytes = 0;
     m_unscheduledBytes = 10000;
-    m_unscheduledPrio = 0x1F;//7
-    m_scheduledPrio = 0x00;//0
-    m_grantPrio=0x1F;//7
+    m_rttBytes = 10000;
+    m_unscheduledPrio = 0x1F; // Scheduled use 0, 1; Unscheduled use 2-7
+    m_scheduledPrio = 0x00;
+    
+    // 初始化乱序和丢包处理相关变量
+    m_expectedPsn = 0;
+    m_lostPacketCount = 0;
+    m_outOfOrderBuffer.clear();
+    
+    // 初始化包偏移量跟踪数组
+    m_receivedPackets.clear();
+    m_packetSizes.clear();
+    
     m_stats = std::make_shared<Stats>();
 }
 
@@ -107,8 +118,28 @@ RoCEv2Homa::SetReady()
 {
     NS_LOG_FUNCTION(this);
     // Initial credit allows sending unscheduled bytes
-    std::cout<<"Start Homa"<<std::endl;
-    //this->SendCreditRequest(m_sockState->GetBaseRtt() * 10);// Magic number for now
+    
+    // Calculate RTTBytes: RTT × Bandwidth
+    if (m_sockState->GetDeviceRate() != nullptr && m_sockState->GetBaseRtt().IsStrictlyPositive())
+    {
+        // RTTBytes = Bandwidth (bytes/sec) × RTT (seconds)
+        uint64_t rttBytes = static_cast<uint64_t>(
+            m_sockState->GetDeviceRate()->GetBitRate() / 8 * m_sockState->GetBaseRtt().GetSeconds());
+        
+        // Set m_unscheduledBytes to RTTBytes to fully utilize the link in first RTT
+        m_unscheduledBytes = static_cast<uint32_t>(std::min(rttBytes, static_cast<uint64_t>(UINT32_MAX)));
+        
+        std::cout << "Homa: Calculated RTTBytes = " << rttBytes 
+                  << " bytes (Bandwidth: " << m_sockState->GetDeviceRate()->GetBitRate() << " bps"
+                  << ", RTT: " << m_sockState->GetBaseRtt().GetMicroSeconds() << " us)" << std::endl;
+        std::cout << "Homa: Setting UnscheduledBytes to " << m_unscheduledBytes << " bytes" << std::endl;
+    }
+    else
+    {
+        std::cout << "Homa: Warning - Cannot calculate RTTBytes, using default value" << std::endl;
+    }
+    
+    // Set initial credit to allow sending unscheduled bytes
     m_sockState->SetCredit(m_unscheduledBytes);
 }
 
@@ -195,13 +226,77 @@ RoCEv2Homa::UpdateStateRecvData(Ptr<Packet> packet, const RoCEv2Header& roce)
         m_msgSize = tag.GetMsgSize();
     }
 
-    m_recvedBytes += packet->GetSize();
+    // 获取包偏移量（使用PSN作为偏移量）
+    uint32_t packetOffset = roce.GetPSN();
+    uint32_t packetSize = packet->GetSize();
+    
+    // 更新总接收字节数（包括重传）
+    m_recvedBytes += packetSize;
+    
+    // 使用包偏移量进行精确跟踪，避免重传重复计算
+    SetPacketReceived(packetOffset, packetSize);
+    
+    // 添加序列号跟踪用于乱序检测
+    uint32_t currentPsn = roce.GetPSN();
+    
+    // 乱序检测和丢包统计
+    if (m_expectedPsn == 0)
+    {
+        m_expectedPsn = currentPsn; // 初始化期望PSN
+    }
+    
+    if (currentPsn > m_expectedPsn)
+    {
+        // 检测到丢包 - 统计丢失的包数量
+        uint32_t lostPkts = currentPsn - m_expectedPsn;
+        m_lostPacketCount += lostPkts;
+        std::cout << "Homa: Detected " << lostPkts << " lost packets in flow " 
+                  << m_flowId << " (expected " << m_expectedPsn 
+                  << ", got " << currentPsn << ")" << std::endl;
+    }
+    else if (currentPsn < m_expectedPsn)
+    {
+        // 乱序包 - 记录但不计入丢包
+        std::cout << "Homa: Out-of-order packet detected in flow " 
+                  << m_flowId << " (expected " << m_expectedPsn 
+                  << ", got " << currentPsn << ")" << std::endl;
+        // 将乱序包加入缓冲区等待重排
+        m_outOfOrderBuffer[currentPsn] = packet->Copy();
+    }
+    
+    // 更新期望的下一个PSN（只在包是按序或超前到达时更新）
+    if (currentPsn >= m_expectedPsn)
+    {
+        m_expectedPsn = currentPsn + 1;
+    }
+    
+    // 处理缓冲区中的乱序包
+    ProcessOutOfOrderBuffer();
 
     Ptr<HomaScheduler> scheduler = GetNodeScheduler();
     if (scheduler)
     {
-        scheduler->UpdateFlow(m_flowId, m_msgSize, m_recvedBytes, this);
+        // 使用unique bytes进行调度决策，避免重传干扰
+        scheduler->UpdateFlow(m_flowId, m_msgSize, m_uniqueRecvedBytes, this);
         scheduler->CheckSchedule(m_sockState->GetPacketSize());
+    }
+}
+
+// 新增：处理乱序缓冲区的方法
+void
+RoCEv2Homa::ProcessOutOfOrderBuffer()
+{
+    // 按顺序处理缓冲区中的包
+    while (m_outOfOrderBuffer.find(m_expectedPsn) != m_outOfOrderBuffer.end())
+    {
+        Ptr<Packet> bufferedPacket = m_outOfOrderBuffer[m_expectedPsn];
+        m_outOfOrderBuffer.erase(m_expectedPsn);
+        
+        // 注意：字节数已经在主流程中更新过了，这里只需要更新期望PSN
+        m_expectedPsn++;
+        
+        std::cout << "Homa: Processed buffered packet, new expected PSN: " 
+                  << m_expectedPsn << std::endl;
     }
 }
 
@@ -241,71 +336,35 @@ RoCEv2Homa::UpdateStateWithRcvACK(Ptr<Packet> packet,
     }
 }
 
-/*void 
-RoCEv2Homa::UpdateStateWithOutbandPkt(Ptr<Packet> packet,
-                                     const RoCEv2Header& roce,
-                                     const uint32_t senderNextPSN){
-
-    NS_LOG_FUNCTION(this << packet << roce << senderNextPSN);
-    CreditRequestTag crTag;
-    PathTag pathTag;
-    bool hasPathTag = packet->PeekPacketTag(pathTag);
-    bool hasCrTag = packet->PeekPacketTag(crTag);
-    NS_ABORT_UNLESS(hasPathTag);
-    NS_ABORT_UNLESS(hasCrTag);
-    m_sockState->SetCredit(m_unscheduledBytes);
-}*/
-
-/*void 
-RoCEv2Homa::SendCreditRequest(Time rto){
-    NS_LOG_FUNCTION(this << rto);
-    // To stop sending, we set the cwnd to 0
-    //m_sockState->SetCwnd(0);
-    m_sockState->SetCredit(0);
-    // Check if a Req is just sent
-    if (m_cReqTimeOut.IsRunning())
-    {
-        return;
-    }
-
-    NS_ASSERT_MSG(!m_sendOutbandPktCb.IsNull(), "SendOutbandPktCb not set!");
-    // Check if the flow is stopped
-    if (CheckStopCondition())
-    {
-        return;
-    }
-    CongestionTypeTag ctTag(GetTypeId().GetUid());
-    CreditRequestTag crTag(true);
-    SocketIpTosTag ipTosTag;
-    ipTosTag.SetTos(m_unscheduledPrio <<2);
-    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag,ipTosTag};
-
-    // Send out-of-band credit request packet
-    bool success = m_sendOutbandPktCb(0, true, packetTags);
-    if (success)
-    {
-        // m_probeSeq += 1;
-        // // Log the time and seq of the probe
-        std::cout<<"success"<<std::endl;
-        NS_LOG_DEBUG(Simulator::Now().GetNanoSeconds() << " Send Credit Req ");
-    }
-    else
-    {
-        NS_LOG_WARN("Send Credit Req failed!");
-    }
-    // Start probe
-    ScheduleNextCreditReq(rto);
-
-}*/
-
-
 void
 RoCEv2Homa::SendGrantACK(uint32_t grantOffset, uint32_t priority)
 {
     NS_LOG_FUNCTION(this << grantOffset << (uint32_t)priority);
     std::cout<<"send priority"<<(uint32_t)priority<<std::endl;
-    HomaGrantTag tag(m_flowId, grantOffset, priority);
-    std::cout << "Sending Grant ACK" <<"send priority"<<tag.GetPriority()<< std::endl;
+    
+    // Calculate optimal grant size based on RTT and bandwidth
+    uint32_t optimalGrantSize = m_sockState->GetPacketSize(); // Default to packet size
+    
+   /* if (m_sockState->GetDeviceRate() != nullptr && m_sockState->GetBaseRtt().IsStrictlyPositive())
+    {
+        // Calculate how many packets can be sent per RTT to maintain full link utilization
+        uint64_t rttBytes = static_cast<uint64_t>(
+            m_sockState->GetDeviceRate()->GetBitRate() / 8 * m_sockState->GetBaseRtt().GetSeconds());
+        
+        // Grant enough credit to send approximately one RTT worth of data
+        // But cap it to prevent excessive buffering
+        uint32_t maxGrant = static_cast<uint32_t>(std::min(rttBytes / 2, static_cast<uint64_t>(1000000))); // Cap at 1MB
+        optimalGrantSize = std::min(maxGrant, grantOffset);
+        
+        std::cout << "Homa Grant: RTTBytes=" << rttBytes 
+                  << ", GrantOffset=" << grantOffset 
+                  << ", OptimalGrant=" << optimalGrantSize << std::endl;
+    }*/
+    
+    HomaGrantTag tag(m_flowId, optimalGrantSize, priority);
+   /* std::cout << "Sending Grant ACK with optimal size: " << optimalGrantSize 
+              << ", priority: " << tag.GetPriority() << std::endl;*/
+    
     // Also we need to specify CongestionTypeTag to route it to correct CC on receiver?
     // Actually out-of-band packets are demuxed by RoCEv2Socket to the correct flow.
     // If it's a "credit" packet, RoCEv2Socket might handle it?
@@ -335,6 +394,49 @@ uint32_t
 RoCEv2Homa::GetFlowId() const
 {
     return m_flowId;
+}
+
+void
+RoCEv2Homa::SetPacketReceived(uint32_t packetOffset, uint32_t packetSize)
+{
+    NS_LOG_FUNCTION(this << packetOffset << packetSize);
+    
+    // 扩展数组大小如果需要
+    if (packetOffset >= m_receivedPackets.size())
+    {
+        m_receivedPackets.resize(packetOffset + 1, false);
+        m_packetSizes.resize(packetOffset + 1, 0);
+    }
+    
+    // 只有新接收的包才更新unique bytes
+    if (!m_receivedPackets[packetOffset])
+    {
+        m_receivedPackets[packetOffset] = true;
+        m_packetSizes[packetOffset] = packetSize;
+        m_uniqueRecvedBytes += packetSize;
+        std::cout << "Homa: New packet received at offset " << packetOffset 
+                  << ", size " << packetSize 
+                  << ", unique bytes now: " << m_uniqueRecvedBytes << std::endl;
+    }
+    else
+    {
+        std::cout << "Homa: Duplicate packet detected at offset " << packetOffset 
+                  << ", size " << packetSize << std::endl;
+    }
+}
+
+bool
+RoCEv2Homa::IsPacketReceived(uint32_t packetOffset) const
+{
+    if (packetOffset >= m_receivedPackets.size())
+        return false;
+    return m_receivedPackets[packetOffset];
+}
+
+uint32_t
+RoCEv2Homa::GetUniqueReceivedBytes() const
+{
+    return m_uniqueRecvedBytes;
 }
 
 // -------------------------------------------------------------------------
@@ -377,19 +479,22 @@ HomaScheduler::~HomaScheduler()
 void
 HomaScheduler::UpdateFlow(uint32_t flowId,
                           uint32_t msgSize,
-                          uint32_t recvedBytes,
+                          uint32_t uniqueRecvedBytes,  // Changed from recvedBytes
                           Ptr<RoCEv2Homa> flow)
 {
     FlowState& state = m_activeFlows[flowId];
     state.msgSize = msgSize;
-    state.recvedBytes = recvedBytes;
+    state.recvedBytes = uniqueRecvedBytes;  // Use unique bytes to avoid retransmission interference
     state.flow = flow;
     state.lastUpdate = Simulator::Now();
-    if (state.grantedBytes < recvedBytes)
-        state.grantedBytes = recvedBytes;
+    if (state.grantedBytes < uniqueRecvedBytes)
+        state.grantedBytes = uniqueRecvedBytes;
 
-    if (recvedBytes >= msgSize)
+    // 只有当真正接收完所有唯一字节时才移除流
+    if (uniqueRecvedBytes >= msgSize)
     {
+        std::cout << "HomaScheduler: Flow " << flowId << " completed with " 
+                  << uniqueRecvedBytes << "/" << msgSize << " unique bytes" << std::endl;
         Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, flow, 0, 0x00);
         RemoveFlow(flowId);
     }
