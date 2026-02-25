@@ -62,14 +62,7 @@
                 "innerQueueDisc": "ns3::FifoQueueDiscEcn",
                 "innerQueueDiscConfig": {
                     "MaxSize": "10MiB"
-                },
-                "prioRateLimits": [
-                    {
-                        "priority": 0,
-                        "ratio": 0.03,
-                        "burstSize": 100
-                    }
-                ]
+                }
             },
             {
                 "nodes": "switch",
@@ -100,14 +93,7 @@
                     "EcnKMin": "400KiB",
                     "EcnKMax": "1600KiB",
                     "EcnPMax": 0.2
-                },
-                "prioRateLimits": [
-                    {
-                        "priority": 0,
-                        "ratio": 0.03,
-                        "burstSize": 100
-                    }
-                ]
+                }
             }
         ],
         "linkConfig": [

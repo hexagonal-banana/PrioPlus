@@ -1,0 +1,17 @@
+Current simulation time: 0.100117s, Completed flows: 1597
+Current simulation time: 0.100209s, Completed flows: 3130
+Current simulation time: 0.100298s, Completed flows: 4556
+Current simulation time: 0.100378s, Completed flows: 5803
+Current simulation time: 0.100456s, Completed flows: 7048
+Current simulation time: 0.100529s, Completed flows: 8215
+Current simulation time: 0.1006s, Completed flows: 9308
+Current simulation time: 0.100672s, Completed flows: 10473
+Current simulation time: 0.100747s, Completed flows: 11682
+Current simulation time: 0.100827s, Completed flows: 12980
+Current simulation time: 0.100907s, Completed flows: 14322
+Current simulation time: 0.10098s, Completed flows: 15443
+Current simulation time: 0.101057s, Completed flows: 16687
+Current simulation time: 0.101136s, Completed flows: 17920
+Current simulation time: 0.101214s, Completed flows: 19214
+Current simulation time: 0.101294s, Completed flows: 20458
+Current simulation time: 0.10137s, Completed flows: 21644

@@ -51,7 +51,8 @@ NS_LOG_COMPONENT_DEFINE("RoCEv2Socket");
 uint32_t RoCEv2SocketState::m_totalflowId = 0;
 
 // 静态方法实现
-uint32_t RoCEv2SocketState::AllocateFlowId()
+uint32_t
+RoCEv2SocketState::AllocateFlowId()
 {
     static uint32_t nextFlowId = 1;
     return nextFlowId++;
@@ -208,7 +209,8 @@ RoCEv2Socket::SendPendingPacket()
     if (m_ackMode == RECEIVER_DRIVEN && m_sockState->GetCredit() < totalPacketSize)
     {
         // The credit is not enough to send a packet.
-        //std::cout<<"credit is not enough,"<<"flowId:"<<m_sockState->GetFlowId()<<",now credit:"<<m_sockState->GetCredit()<<std::endl;
+        // std::cout<<"credit is not enough,"<<"flowId:"<<m_sockState->GetFlowId()<<",now
+        // credit:"<<m_sockState->GetCredit()<<std::endl;
         return;
     }
 
@@ -296,7 +298,7 @@ RoCEv2Socket::SendPendingPacket()
     // [[maybe_unused]] const auto& [_, rocev2Header, payload, daddr, route] =
     //     m_txBuffer.PeekNextShouldSend();
     const DcbTxBuffer::DcbTxBufferItem& item = m_txBuffer.PopNextShouldSend();
-  //  std::cout << "psn"
+    //  std::cout << "psn"
     //          << " " << item.m_psn << std::endl;
     const uint32_t sz =
         item.m_payload->GetSize() + m_innerProto->GetHeaderSize() + m_ccOps->GetExtraHeaderSize();
@@ -317,6 +319,10 @@ RoCEv2Socket::SendPendingPacket()
     if (m_flowState == PENDING)
     {
         m_flowState = RUNNING;
+    }
+
+    if (!m_rtoEvent.IsRunning())
+    {
         Time rtoTime = GetRTOTime();
         m_rtoEvent = Simulator::Schedule(rtoTime, &RoCEv2Socket::RetransmissionTimeout, this);
         m_lastRto = rtoTime;
@@ -437,13 +443,13 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
         // Note that the psn in ACK's BTH is expected PSN, not the PSN of the ACKed packet
         if (roce.GetPSN() != 0) // In RECEIVER_DRIVEN mode, the PSN of the ACKed packet could be 0
         {
-         //   std::cout << "ACK to  " << roce.GetPSN() - 1 << std::endl;
+            //   std::cout << "ACK to  " << roce.GetPSN() - 1 << std::endl;
             m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
         }
 
         if (m_txBuffer.IsSendFinish())
         {
-         //   std::cout << "SendFinish" << std::endl;
+            //   std::cout << "SendFinish" << std::endl;
             // last ACk received, flow finshed
             Finish();
         }
@@ -487,9 +493,12 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
         m_rtoEvent.Cancel();
         // Place the schedule in the judgement as the rtoEvent should be running all the flow's life
         // If the rtoEvent is not running, the flow is finished, no need to schedule the next
-        Time rtoTime = GetRTOTime();
-        m_rtoEvent = Simulator::Schedule(rtoTime, &RoCEv2Socket::RetransmissionTimeout, this);
-        m_lastRto = rtoTime;
+        if (m_txBuffer.InflightPkts() > 0)
+        {
+            Time rtoTime = GetRTOTime();
+            m_rtoEvent = Simulator::Schedule(rtoTime, &RoCEv2Socket::RetransmissionTimeout, this);
+            m_lastRto = rtoTime;
+        }
     }
 }
 
@@ -1223,7 +1232,7 @@ RoCEv2Socket::SendOutbandPkt(uint32_t psn,
     }
     else
     {
-      //  std::cout << "send outband pkt  " << m_rxState.rxBuffer->GetExpectedPsn() << std::endl;
+        //  std::cout << "send outband pkt  " << m_rxState.rxBuffer->GetExpectedPsn() << std::endl;
         // Generate standard ACK packet carrying the provided PSN
         packet = RoCEv2L4Protocol::GenerateACK(m_endPoint->GetLocalPort(),
                                                m_endPoint->GetPeerPort(),
@@ -1265,9 +1274,13 @@ RoCEv2Socket::HandleProbePacket(Ptr<Packet> packet,
             // Place the schedule in the judgement as the rtoEvent should be running all the flow's
             // life If the rtoEvent is not running, the flow is finished, no need to schedule the
             // next
-            Time rtoTime = GetRTOTime();
-            m_rtoEvent = Simulator::Schedule(rtoTime, &RoCEv2Socket::RetransmissionTimeout, this);
-            m_lastRto = rtoTime;
+            if (m_txBuffer.InflightPkts() > 0)
+            {
+                Time rtoTime = GetRTOTime();
+                m_rtoEvent =
+                    Simulator::Schedule(rtoTime, &RoCEv2Socket::RetransmissionTimeout, this);
+                m_lastRto = rtoTime;
+            }
         }
         break;
     case RoCEv2Header::Opcode::UD_SEND_ONLY:
@@ -1621,7 +1634,7 @@ DcbTxBuffer::GetEndPsn() const
 bool
 DcbTxBuffer::IsSendFinish() const
 {
-  //  std::cout << "check finish  " << m_frontPsn << "  " << m_endPsn << std::endl;
+    //  std::cout << "check finish  " << m_frontPsn << "  " << m_endPsn << std::endl;
     return m_frontPsn == m_endPsn;
 }
 
@@ -1831,7 +1844,8 @@ DcbRxBuffer::Add(uint32_t psn, Ipv4Header ipv4, RoCEv2Header roce, Ptr<Packet> p
         m_buffer.erase(m_expectedPsn);
         // TODO No warp around check
         m_expectedPsn++;
-      //  std::cout << "add m_psn from" << m_expectedPsn - 1 << "to" << m_expectedPsn << std::endl;
+        //  std::cout << "add m_psn from" << m_expectedPsn - 1 << "to" << m_expectedPsn <<
+        //  std::endl;
     }
 }
 
@@ -1874,12 +1888,12 @@ RoCEv2SocketState::RoCEv2SocketState()
       m_packetSize(1054),
       m_mss(1000),
       m_flowTotalSize(0),
-      m_flowId(0)  // 初始化为0，稍后分配
+      m_flowId(0) // 初始化为0，稍后分配
 {
     // 静态变量初始化：全局流计数器
     static uint32_t globalFlowCounter = 0;
     m_totalflowId = ++globalFlowCounter;
-    
+
     // 为当前socket分配唯一的flowId
     m_flowId = AllocateFlowId();
 }

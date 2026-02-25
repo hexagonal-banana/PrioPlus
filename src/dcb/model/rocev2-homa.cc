@@ -356,7 +356,10 @@ HomaNodeScheduler::UpdateFlow(uint32_t flowId,
     {
         //std::cout << "HomaScheduler: Flow " << flowId << " completed with " << uniqueRecvedBytes
                   //<< "/" << msgSize << " unique bytes" << std::endl;
-        Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, flow, 0, 0x00);
+        //state.flow->SendGrantACK(0,0x00);
+        Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, 
+                       state.flow, 0, 0);
+        m_activeFlows.erase(flowId);
     }
 }
 
@@ -369,7 +372,7 @@ HomaNodeScheduler::CheckSchedule(uint32_t packetSize,
     //bug needs to fix:how to make scheduled data run 2 priority but not lead to outoforder arriving
     //std::cout << "Active flows size=" << m_activeFlows.size() << std::endl;
     // Clean up completed flows from m_activeFlows
-    for (auto it = m_activeFlows.begin(); it != m_activeFlows.end();)
+   /*for (auto it = m_activeFlows.begin(); it != m_activeFlows.end();)
     {
         if (it->second.recvedBytes >= it->second.msgSize)
         {
@@ -380,10 +383,10 @@ HomaNodeScheduler::CheckSchedule(uint32_t packetSize,
         {
             ++it;
         }
-    }
+    }*/
 
     // Count currently active flows
-    uint32_t activeCount = 0;
+   uint32_t activeCount = 0;
     std::vector<uint32_t> inactiveFlows;
     for (auto& kv : m_activeFlows)
     {
@@ -416,7 +419,9 @@ HomaNodeScheduler::CheckSchedule(uint32_t packetSize,
         //Due to out of order bug,do not use fixed priority.
         // uint32_t prio = (id % 2 == 0) ? 0 : 6;
         //std::cout << "inactive send grant start" << std::endl;
-        state.flow->SendGrantACK(grantStep, 0);
+        //state.flow->SendGrantACK(grantStep, 0);
+        Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, 
+                       state.flow, grantStep, 0);
         state.grantedBytes = newGrant;
     }
 
@@ -440,7 +445,9 @@ HomaNodeScheduler::CheckSchedule(uint32_t packetSize,
             uint32_t newGrant = state.grantedBytes + grantStep;
             //std::cout << "active send ACK"
               //      << "flowId:" << currentFlowId << std::endl;
-            state.flow->SendGrantACK(grantStep, 0);
+            //state.flow->SendGrantACK(grantStep, 0);
+            Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, 
+                       state.flow, grantStep, 0);
             state.grantedBytes = newGrant;
         }
         else
@@ -451,7 +458,9 @@ HomaNodeScheduler::CheckSchedule(uint32_t packetSize,
             {
                 //std::cout << "inactive send ACK"
                   //        << "flowId" << currentFlowId << std::endl;
-                state.flow->SendGrantACK(0, 0);
+                //state.flow->SendGrantACK(0, 0);
+                Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, 
+                       state.flow, 0, 0);
             }
             else
             {
@@ -461,10 +470,12 @@ HomaNodeScheduler::CheckSchedule(uint32_t packetSize,
         }
     }
     //no overcommit implementation
- /*   FlowState& state = m_activeFlows[currentFlowId];
+    /*FlowState& state = m_activeFlows[currentFlowId];
     uint32_t grantStep = packetSize;
     uint32_t newGrant = state.grantedBytes + grantStep;
-    state.flow->SendGrantACK(grantStep, 0);
+    //state.flow->SendGrantACK(grantStep, 0);
+    Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, 
+                       state.flow, grantStep, 0);
     state.grantedBytes = newGrant;*/
 }
 
