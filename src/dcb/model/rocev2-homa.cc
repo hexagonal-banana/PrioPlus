@@ -25,7 +25,36 @@
 namespace ns3
 {
 
-std::map<uint32_t, RoCEv2Homa::FlowState> RoCEv2Homa::m_activeFlows;
+std::map<uint32_t, Ptr<HomaNodeScheduler>> HomaNodeScheduler::m_nodeSchedulers;
+
+NS_OBJECT_ENSURE_REGISTERED(HomaNodeScheduler);
+
+TypeId
+HomaNodeScheduler::GetTypeId()
+{
+    static TypeId tid =
+        TypeId("ns3::HomaNodeScheduler").SetParent<Object>().AddConstructor<HomaNodeScheduler>();
+    return tid;
+}
+
+HomaNodeScheduler::HomaNodeScheduler()
+{
+    m_overcommitLevel = 2;
+}
+
+HomaNodeScheduler::~HomaNodeScheduler()
+{
+}
+
+Ptr<HomaNodeScheduler>
+HomaNodeScheduler::Get(uint32_t nodeId)
+{
+    if (m_nodeSchedulers.find(nodeId) == m_nodeSchedulers.end())
+    {
+        m_nodeSchedulers[nodeId] = CreateObject<HomaNodeScheduler>();
+    }
+    return m_nodeSchedulers[nodeId];
+}
 
 NS_LOG_COMPONENT_DEFINE("RoCEv2Homa");
 
@@ -100,7 +129,6 @@ RoCEv2Homa::Init()
     m_rttBytes = 10000;
     m_unscheduledPrio = 0x1F; // Scheduled use 0, 1; Unscheduled use 2-7
     m_scheduledPrio = 0x00;
-    m_overcommitLevel = 2;
     // 初始化乱序和丢包处理相关变量
     m_expectedPsn = 0;
     m_lostPacketCount = 0;
@@ -206,7 +234,8 @@ RoCEv2Homa::UpdateStateSend(Ptr<Packet> packet)
     packet->ReplacePacketTag(ipTosTag);
 
     m_bytesSended += packet->GetSize();
-    std::cout << "flow=" << m_flowId <<"m_bytesSended="<<m_bytesSended<<"m_unsbytes="<<m_unscheduledBytes<< std::endl;
+    std::cout << "flow=" << m_flowId << "m_bytesSended=" << m_bytesSended
+              << "m_unsbytes=" << m_unscheduledBytes << std::endl;
     // Parent class might add CreditRequestTag, we should prevent that or ignore it.
     // RoCEv2CreditCc adds CreditRequestTag at end of flow. We can keep it or not.
     // Ideally we don't call parent UpdateStateSend to avoid pollution
@@ -235,8 +264,10 @@ RoCEv2Homa::UpdateStateRecvData(Ptr<Packet> packet, const RoCEv2Header& roce)
     m_recvedBytes += packetSize;
     std::cout << "Homa: New packet received at offset " << packetOffset << ", size " << packetSize
               << ", unique bytes now: " << m_recvedBytes << ", flowId:" << m_flowId << std::endl;
-    UpdateFlow(m_flowId, m_msgSize, m_recvedBytes, this);
-    CheckSchedule(m_sockState->GetPacketSize(), packetSize, m_flowId, isUnscheduled);
+    uint32_t nodeId = Simulator::GetContext();
+    Ptr<HomaNodeScheduler> scheduler = HomaNodeScheduler::Get(nodeId);
+    scheduler->UpdateFlow(m_flowId, m_msgSize, m_recvedBytes, this);
+    scheduler->CheckSchedule(m_sockState->GetPacketSize(), packetSize, m_flowId, isUnscheduled);
 }
 
 // 新增：处理乱序缓冲区的方法
@@ -397,13 +428,13 @@ RoCEv2Homa::Stats::CollectAndCheck()
 }
 
 // -------------------------------------------------------------------------
-// HomaScheduler Implementation
+// HomaNodeScheduler Implementation
 // -------------------------------------------------------------------------
 void
-RoCEv2Homa::UpdateFlow(uint32_t flowId,
-                       uint32_t msgSize,
-                       uint32_t uniqueRecvedBytes, // Changed from recvedBytes
-                       Ptr<RoCEv2Homa> flow)
+HomaNodeScheduler::UpdateFlow(uint32_t flowId,
+                              uint32_t msgSize,
+                              uint32_t uniqueRecvedBytes, // Changed from recvedBytes
+                              Ptr<RoCEv2Homa> flow)
 {
     FlowState& state = m_activeFlows[flowId];
     state.msgSize = msgSize;
@@ -421,15 +452,17 @@ RoCEv2Homa::UpdateFlow(uint32_t flowId,
     }
 }
 
-void RoCEv2Homa::RemoveFlow(uint32_t flowId) {
+void
+HomaNodeScheduler::RemoveFlow(uint32_t flowId)
+{
     m_activeFlows.erase(flowId);
 }
 
 void
-RoCEv2Homa::CheckSchedule(uint32_t packetSize,
-                          uint32_t realSize,
-                          uint32_t currentFlowId,
-                          uint8_t isUnscheduled)
+HomaNodeScheduler::CheckSchedule(uint32_t packetSize,
+                                 uint32_t realSize,
+                                 uint32_t currentFlowId,
+                                 uint8_t isUnscheduled)
 {
     std::cout << "Active flows size=" << m_activeFlows.size() << std::endl;
     // Clean up completed flows from m_activeFlows
@@ -462,16 +495,16 @@ RoCEv2Homa::CheckSchedule(uint32_t packetSize,
     }
 
     // Sort inactive flows by remaining bytes (SRPT)
- /*   std::sort(inactiveFlows.begin(), inactiveFlows.end(), [this](uint32_t a, uint32_t b) {
-        uint32_t remA = m_activeFlows[a].msgSize - m_activeFlows[a].recvedBytes;
-        uint32_t remB = m_activeFlows[b].msgSize - m_activeFlows[b].recvedBytes;
-        return remA < remB;
-    });*/
-    std::cout<<"inactiveflowsize:"<<inactiveFlows.size()<<std::endl;
+    /*   std::sort(inactiveFlows.begin(), inactiveFlows.end(), [this](uint32_t a, uint32_t b) {
+           uint32_t remA = m_activeFlows[a].msgSize - m_activeFlows[a].recvedBytes;
+           uint32_t remB = m_activeFlows[b].msgSize - m_activeFlows[b].recvedBytes;
+           return remA < remB;
+       });*/
+    std::cout << "inactiveflowsize:" << inactiveFlows.size() << std::endl;
     // Activate as many inactive flows as we have capacity for
     for (uint32_t id : inactiveFlows)
     {
-        std::cout<<"inactiveid:"<<id<<std::endl;
+        std::cout << "inactiveid:" << id << std::endl;
         if (activeCount >= m_overcommitLevel)
         {
             break;
@@ -487,12 +520,11 @@ RoCEv2Homa::CheckSchedule(uint32_t packetSize,
             // Determine priority for this newly activated flow
             // Simplified priority assignment for demonstration.
             uint32_t prio = (id % 2 == 0) ? 0 : 6;
-            std::cout<<"inactive send grant start"<<std::endl;
+            std::cout << "inactive send grant start" << std::endl;
             state.flow->SendGrantACK(grantStep, prio);
             state.grantedBytes = newGrant;
 
             // If the current flow is the one newly activated, we already sent a grant.
-            
         }
     }
 
@@ -502,7 +534,8 @@ RoCEv2Homa::CheckSchedule(uint32_t packetSize,
         FlowState& state = m_activeFlows[currentFlowId];
         state.msgBytes += realSize;
         uint32_t prio = (currentFlowId % 2 == 0) ? 0 : 6;
-        std::cout<<"msgBytes="<<state.msgBytes<<"size="<<state.msgSize<<"flowId:"<<currentFlowId<<std::endl;
+        std::cout << "msgBytes=" << state.msgBytes << "size=" << state.msgSize
+                  << "flowId:" << currentFlowId << std::endl;
         if (state.isActive)
         {
             // Flow is ACTIVE.
@@ -513,10 +546,10 @@ RoCEv2Homa::CheckSchedule(uint32_t packetSize,
             {
                 uint32_t grantStep = packetSize;
                 uint32_t newGrant = state.grantedBytes + grantStep;
-                std::cout<<"active send ACK"<<"flowId:"<<currentFlowId<<std::endl;
+                std::cout << "active send ACK"
+                          << "flowId:" << currentFlowId << std::endl;
                 state.flow->SendGrantACK(grantStep, prio);
                 state.grantedBytes = newGrant;
-                
             }
         }
         else
@@ -525,11 +558,13 @@ RoCEv2Homa::CheckSchedule(uint32_t packetSize,
             // If unscheduled, send an ACK (grant=0)
             if (isUnscheduled)
             {
-                std::cout<<"inactive send ACK"<<"flowId"<<currentFlowId<<std::endl;
+                std::cout << "inactive send ACK"
+                          << "flowId" << currentFlowId << std::endl;
                 state.flow->SendGrantACK(0, prio);
             }
-            else{
-                std::cout<<"warning:shuold not reach this"<<std::endl;
+            else
+            {
+                std::cout << "warning:shuold not reach this" << std::endl;
             }
             // If scheduled, do nothing
         }

@@ -106,6 +106,51 @@ class HomaResendTag : public Tag
     uint32_t m_length;
 };
 
+class RoCEv2Homa;
+
+class HomaNodeScheduler : public Object
+{
+  public:
+    static TypeId GetTypeId(void);
+    HomaNodeScheduler();
+    virtual ~HomaNodeScheduler();
+
+    void UpdateFlow(uint32_t flowId, uint32_t msgSize, uint32_t recvedBytes, Ptr<RoCEv2Homa> flow);
+    void RemoveFlow(uint32_t flowId);
+    void CheckSchedule(uint32_t packetSize,
+                       uint32_t realSize,
+                       uint32_t flowId,
+                       uint8_t isUnscheduled);
+
+    static Ptr<HomaNodeScheduler> Get(uint32_t nodeId);
+
+  private:
+    struct FlowState
+    {
+        uint32_t msgSize;
+        uint32_t recvedBytes;
+        uint32_t grantedBytes;
+        uint32_t msgBytes;
+        Time lastUpdate;
+        Ptr<RoCEv2Homa> flow;
+
+        bool isActive;
+
+        FlowState()
+            : msgSize(0),
+              recvedBytes(0),
+              grantedBytes(0),
+              msgBytes(0),
+              isActive(false)
+        {
+        }
+    };
+
+    std::map<uint32_t, FlowState> m_activeFlows;
+    uint32_t m_overcommitLevel;
+    static std::map<uint32_t, Ptr<HomaNodeScheduler>> m_nodeSchedulers;
+};
+
 class RoCEv2Homa : public RoCEv2CreditCc
 {
   public:
@@ -154,35 +199,10 @@ class RoCEv2Homa : public RoCEv2CreditCc
     uint32_t GetUniqueReceivedBytes() const;
     void ProcessOutOfOrderBuffer();
 
-    // Schedule logic
-    void UpdateFlow(uint32_t flowId, uint32_t msgSize, uint32_t recvedBytes, Ptr<RoCEv2Homa> flow);
-    void RemoveFlow(uint32_t flowId);
-    void CheckSchedule(uint32_t packetSize,
-                       uint32_t realSize,
-                       uint32_t flowId,
-                       uint8_t isUnscheduled);
+    // Removed schedule logic from here
 
   private:
-    struct FlowState
-    {
-        uint32_t msgSize;
-        uint32_t recvedBytes;
-        uint32_t grantedBytes;
-        uint32_t msgBytes;
-        Time lastUpdate;
-        Ptr<RoCEv2Homa> flow;
-
-        bool isActive;
-
-        FlowState()
-            : msgSize(0),
-              recvedBytes(0),
-              grantedBytes(0),
-              msgBytes(0),
-              isActive(false)
-        {
-        }
-    };
+    // FlowState moved to HomaNodeScheduler
 
     std::shared_ptr<Stats> m_stats; //!< Statistics
     uint32_t m_flowId;
@@ -205,8 +225,7 @@ class RoCEv2Homa : public RoCEv2CreditCc
     // 重传情况下recvedBytes统计相关成员变量
     std::vector<bool> m_receivedPackets; // 跟踪哪些包偏移量已被接收
     std::vector<uint32_t> m_packetSizes; // 跟踪每个接收包的大小
-    static std::map<uint32_t, FlowState> m_activeFlows;
-    uint32_t m_overcommitLevel;
+    // Static active flows and overcommit level moved to HomaNodeScheduler
 };
 
 } // namespace ns3
