@@ -21,7 +21,7 @@
 #include "ns3/rocev2-socket.h"
 #include "ns3/tag.h"
 
-#include <map> // 添加map容器支持
+#include <map> 
 
 namespace ns3
 {
@@ -197,7 +197,6 @@ class RoCEv2Homa : public RoCEv2CreditCc
 
 
   private:
-    // FlowState moved to HomaNodeScheduler
 
     std::shared_ptr<Stats> m_stats; //!< Statistics
     uint32_t m_flowId;
@@ -207,12 +206,11 @@ class RoCEv2Homa : public RoCEv2CreditCc
     uint64_t m_uniqueRecvedBytes;
 
     uint32_t m_unscheduledBytes;
-    uint32_t m_rttBytes; // RTT字节数
+    uint32_t m_rttBytes; 
     uint32_t m_unscheduledPrio;
     uint32_t m_scheduledPrio;
     uint32_t m_grantPrio;
 
-    // Static active flows and overcommit level moved to HomaNodeScheduler
 };
 
 } // namespace ns3
