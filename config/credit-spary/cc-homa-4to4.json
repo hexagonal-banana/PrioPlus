@@ -120,7 +120,7 @@
                 "SendEnabled": true,
                 "FlowPriority": 1,
                 "TrafficPattern": "SendOnce",
-                "TrafficSizeBytes": 1000000,
+                "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
                 "DestinationNode": 12
@@ -144,7 +144,7 @@
                 "SendEnabled": true,
                 "FlowPriority": 1,
                 "TrafficPattern": "SendOnce",
-                "TrafficSizeBytes": 1000000,
+                "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
                 "DestinationNode": 13
@@ -168,7 +168,7 @@
                 "SendEnabled": true,
                 "FlowPriority": 1,
                 "TrafficPattern": "SendOnce",
-                "TrafficSizeBytes": 1000000,
+                "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
                 "DestinationNode": 14
@@ -192,7 +192,7 @@
                 "SendEnabled": true,
                 "FlowPriority": 1,
                 "TrafficPattern": "SendOnce",
-                "TrafficSizeBytes": 1000000,
+                "TrafficSizeBytes": 10000000,
                 "TrafficLoad": 0.0,
                 "DestFixed": true,
                 "DestinationNode": 15

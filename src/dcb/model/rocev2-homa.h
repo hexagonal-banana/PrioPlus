@@ -194,12 +194,7 @@ class RoCEv2Homa : public RoCEv2CreditCc
 
     void SendGrantACK(uint32_t grantOffset, uint32_t priority);
 
-    void SetPacketReceived(uint32_t packetOffset, uint32_t packetSize);
-    bool IsPacketReceived(uint32_t packetOffset) const;
-    uint32_t GetUniqueReceivedBytes() const;
-    void ProcessOutOfOrderBuffer();
 
-    // Removed schedule logic from here
 
   private:
     // FlowState moved to HomaNodeScheduler
@@ -217,14 +212,6 @@ class RoCEv2Homa : public RoCEv2CreditCc
     uint32_t m_scheduledPrio;
     uint32_t m_grantPrio;
 
-    // 乱序和丢包处理相关成员变量
-    uint32_t m_expectedPsn;                             // 期望的下一个包序列号
-    uint32_t m_lostPacketCount;                         // 丢包计数
-    std::map<uint32_t, Ptr<Packet>> m_outOfOrderBuffer; // 乱序包缓冲区
-
-    // 重传情况下recvedBytes统计相关成员变量
-    std::vector<bool> m_receivedPackets; // 跟踪哪些包偏移量已被接收
-    std::vector<uint32_t> m_packetSizes; // 跟踪每个接收包的大小
     // Static active flows and overcommit level moved to HomaNodeScheduler
 };
 

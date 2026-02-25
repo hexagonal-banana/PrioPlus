@@ -208,6 +208,7 @@ RoCEv2Socket::SendPendingPacket()
     if (m_ackMode == RECEIVER_DRIVEN && m_sockState->GetCredit() < totalPacketSize)
     {
         // The credit is not enough to send a packet.
+        //std::cout<<"credit is not enough,"<<"flowId:"<<m_sockState->GetFlowId()<<",now credit:"<<m_sockState->GetCredit()<<std::endl;
         return;
     }
 
@@ -295,8 +296,8 @@ RoCEv2Socket::SendPendingPacket()
     // [[maybe_unused]] const auto& [_, rocev2Header, payload, daddr, route] =
     //     m_txBuffer.PeekNextShouldSend();
     const DcbTxBuffer::DcbTxBufferItem& item = m_txBuffer.PopNextShouldSend();
-    std::cout << "psn"
-              << " " << item.m_psn << std::endl;
+  //  std::cout << "psn"
+    //          << " " << item.m_psn << std::endl;
     const uint32_t sz =
         item.m_payload->GetSize() + m_innerProto->GetHeaderSize() + m_ccOps->GetExtraHeaderSize();
 
@@ -436,13 +437,13 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
         // Note that the psn in ACK's BTH is expected PSN, not the PSN of the ACKed packet
         if (roce.GetPSN() != 0) // In RECEIVER_DRIVEN mode, the PSN of the ACKed packet could be 0
         {
-            std::cout << "ACK to  " << roce.GetPSN() - 1 << std::endl;
+         //   std::cout << "ACK to  " << roce.GetPSN() - 1 << std::endl;
             m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
         }
 
         if (m_txBuffer.IsSendFinish())
         {
-            std::cout << "SendFinish" << std::endl;
+         //   std::cout << "SendFinish" << std::endl;
             // last ACk received, flow finshed
             Finish();
         }
@@ -1222,7 +1223,7 @@ RoCEv2Socket::SendOutbandPkt(uint32_t psn,
     }
     else
     {
-        std::cout << "send outband pkt  " << m_rxState.rxBuffer->GetExpectedPsn() << std::endl;
+      //  std::cout << "send outband pkt  " << m_rxState.rxBuffer->GetExpectedPsn() << std::endl;
         // Generate standard ACK packet carrying the provided PSN
         packet = RoCEv2L4Protocol::GenerateACK(m_endPoint->GetLocalPort(),
                                                m_endPoint->GetPeerPort(),
@@ -1620,7 +1621,7 @@ DcbTxBuffer::GetEndPsn() const
 bool
 DcbTxBuffer::IsSendFinish() const
 {
-    std::cout << "check finish  " << m_frontPsn << "  " << m_endPsn << std::endl;
+  //  std::cout << "check finish  " << m_frontPsn << "  " << m_endPsn << std::endl;
     return m_frontPsn == m_endPsn;
 }
 
@@ -1830,7 +1831,7 @@ DcbRxBuffer::Add(uint32_t psn, Ipv4Header ipv4, RoCEv2Header roce, Ptr<Packet> p
         m_buffer.erase(m_expectedPsn);
         // TODO No warp around check
         m_expectedPsn++;
-        std::cout << "add m_psn from" << m_expectedPsn - 1 << "to" << m_expectedPsn << std::endl;
+      //  std::cout << "add m_psn from" << m_expectedPsn - 1 << "to" << m_expectedPsn << std::endl;
     }
 }
 
