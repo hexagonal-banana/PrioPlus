@@ -348,14 +348,14 @@ HomaNodeScheduler::UpdateFlow(uint32_t flowId,
     FlowState& state = m_activeFlows[flowId];
     state.msgSize = msgSize;
     state.flow = flow;
-    std::cout << "flowId:" << flowId << "size" << m_activeFlows.size() << std::endl;
+    //std::cout << "flowId:" << flowId << "size" << m_activeFlows.size() << std::endl;
     state.recvedBytes = uniqueRecvedBytes; // Todo:Use unique bytes to avoid retransmission interference
     state.lastUpdate = Simulator::Now();
     //Send final grant(offset 0) to make flow ended
     if (uniqueRecvedBytes >= msgSize)
     {
-        std::cout << "HomaScheduler: Flow " << flowId << " completed with " << uniqueRecvedBytes
-                  << "/" << msgSize << " unique bytes" << std::endl;
+        //std::cout << "HomaScheduler: Flow " << flowId << " completed with " << uniqueRecvedBytes
+                  //<< "/" << msgSize << " unique bytes" << std::endl;
         Simulator::Schedule(NanoSeconds(100), &RoCEv2Homa::SendGrantACK, flow, 0, 0x00);
     }
 }
