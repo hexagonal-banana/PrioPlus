@@ -74,6 +74,11 @@ class RoCEv2CongestionOps : public Object
 
     void SetSockState(Ptr<RoCEv2SocketState> sockState);
 
+    virtual uint32_t GetNextPacketPriority(uint32_t defaultPriority)
+    {
+        return defaultPriority;
+    }
+
     /**
      ********** VIRTUAL FUNCTIONS**********
      * implemented by subclasses.
@@ -104,10 +109,10 @@ class RoCEv2CongestionOps : public Object
     {
     }
 
-    virtual void UpdateStateRecvData(Ptr<Packet> packet,
-                                     const RoCEv2Header& roce)
+    virtual void UpdateStateRecvData(Ptr<Packet> packet, const RoCEv2Header& roce)
     {
     }
+
     /**
      * \brief When receiving a CNP, update the state if needed.
      *

@@ -103,7 +103,7 @@
         ],
         "linkConfig": [
             {
-                "links": "switch",
+                "links": "0",
                 "rate": "100Gbps",
                 "delay": "1us"
             }

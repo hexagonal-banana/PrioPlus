@@ -209,8 +209,7 @@ RoCEv2Socket::SendPendingPacket()
     if (m_ackMode == RECEIVER_DRIVEN && m_sockState->GetCredit() < totalPacketSize)
     {
         // The credit is not enough to send a packet.
-        // std::cout<<"credit is not enough,"<<"flowId:"<<m_sockState->GetFlowId()<<",now
-        // credit:"<<m_sockState->GetCredit()<<std::endl;
+         //std::cout<<"credit is not enough,"<<"flowId:"<<m_sockState->GetFlowId()<<",now credit:"<<m_sockState->GetCredit()<<std::endl;
         return;
     }
 
@@ -261,7 +260,7 @@ RoCEv2Socket::SendPendingPacket()
     //     return;
     // }
     Ptr<RoCEv2L4Protocol> rocev2Proto = DynamicCast<RoCEv2L4Protocol>(m_innerProto);
-    uint32_t outPortPriority = IpTos2Priority(GetIpTos());
+    uint32_t outPortPriority = m_ccOps->GetNextPacketPriority(IpTos2Priority(GetIpTos()));
     if (rocev2Proto->CheckCouldSend(m_boundnetdevice->GetIfIndex(), outPortPriority) == false)
     {
         // The queue disc is unavaliable, register a callback to RoCEv2L4Proto and wait for the
@@ -321,7 +320,7 @@ RoCEv2Socket::SendPendingPacket()
         m_flowState = RUNNING;
     }
 
-    if (!m_rtoEvent.IsRunning())
+    if (!m_rtoEvent.IsRunning() && m_congTypeId.GetName() != "ns3::RoCEv2Homa")
     {
         Time rtoTime = GetRTOTime();
         m_rtoEvent = Simulator::Schedule(rtoTime, &RoCEv2Socket::RetransmissionTimeout, this);
