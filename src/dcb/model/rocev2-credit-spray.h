@@ -22,10 +22,11 @@ namespace ns3{
     void UpdateStateWithRcvACK(Ptr<Packet> ack,
                             const RoCEv2Header& roce,
                             const uint32_t senderNextPSN) override;
+    void SetReady() override;
+    void SendCreditRequest(Time rto) override;
     void StartCreditAckLoop(const RoCEv2Header& roce);
     void UpdateStateRecvData(Ptr<Packet> packet,
                              const RoCEv2Header& roce) override;
-    void SendCreditRequest(Time rto) override;
     void SendCreditAck(uint32_t psn) override;
     void UpdateStateWithOutbandPkt(Ptr<Packet> packet,
                                    const RoCEv2Header& roce,
@@ -89,6 +90,10 @@ namespace ns3{
     double m_minAggressiveRatio;
     double m_targetLossRatio;
 
+    uint64_t m_grantBytes;
+    uint64_t m_grantBytesRemaining;
+    double m_grantBytesFactor;
+    bool m_initialCreditReqSent;
     
     //uint32_t m_creditLossCount;
     std::queue<uint64_t> m_senderCreditSeqList;

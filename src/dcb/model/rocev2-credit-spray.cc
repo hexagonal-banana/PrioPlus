@@ -58,6 +58,11 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
                                               DoubleValue(1),
                                               MakeDoubleAccessor(&RoCEv2CreditSpray::m_initCreditRateRatio),
                                               MakeDoubleChecker<double>(0.0, 1.0))
+                                .AddAttribute("GrantBytesFactor",
+                                              "Grant bytes = baseRtt * linkRateBytes * GrantBytesFactor (i.e., BDP * factor).",
+                                              DoubleValue(0.0),
+                                              MakeDoubleAccessor(&RoCEv2CreditSpray::m_grantBytesFactor),
+                                              MakeDoubleChecker<double>(0.0))
                                 ;
         return tid;
     }
@@ -109,12 +114,39 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         m_maxAggressiveRatio = 0.5;
         m_minAggressiveRatio = 0.01;
         m_targetLossRatio = 0.30;
+        m_grantBytes = 0;
+        m_grantBytesRemaining = 0;
+        m_grantBytesFactor = 0.0;
+        m_initialCreditReqSent = false;
     }
 
     void
     RoCEv2CreditSpray::UpdateStateSend(Ptr<Packet> packet)
     {
         NS_LOG_FUNCTION(this << packet);
+
+        if (m_grantBytesRemaining > 0)
+        {
+            uint32_t pktBytes = m_sockState->GetPacketSize();
+            if (m_grantBytesRemaining >= pktBytes)
+            {
+                m_grantBytesRemaining -= pktBytes;
+            }
+            else
+            {
+                m_grantBytesRemaining = 0;
+            }
+            if (m_grantBytesRemaining == 0 )
+            {
+                m_sockState->SetCredit(0);
+            }
+
+            SocketIpTosTag ipTosTag;
+            ipTosTag.SetTos(m_dataPrio);
+            packet->ReplacePacketTag(ipTosTag);
+            RoCEv2CreditCc::UpdateStateSend(packet);
+            return;
+        }
 
         NS_ABORT_UNLESS(!m_senderCreditSeqList.empty());
         uint64_t useSeq=m_senderCreditSeqList.front();
@@ -133,22 +165,82 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
         RoCEv2CreditCc::UpdateStateSend(packet);
     }
 
+    void
+    RoCEv2CreditSpray::SetReady()
+    {
+        if (m_grantBytesFactor > 0.0)
+        {
+            double baseRttSec = m_sockState->GetBaseRtt().GetSeconds();
+            double linkRateBytes = static_cast<double>(m_sockState->GetDeviceRate()->GetBitRate()) / 8.0;
+            double grant = baseRttSec * linkRateBytes * m_grantBytesFactor;
+            m_grantBytes = static_cast<uint64_t>(grant);
+        }
+        m_grantBytesRemaining = m_grantBytes;
+        m_initialCreditReqSent = false;
+        m_sockState->SetCredit(m_grantBytes);
+        RoCEv2CreditCc::SetReady();
+    }
+
+    void
+    RoCEv2CreditSpray::SendCreditRequest(Time rto)
+    {
+        NS_LOG_FUNCTION(this << rto);
+        // Check if a Req is just sent
+        if (m_cReqTimeOut.IsRunning())
+        {
+            return;
+        }
+
+        NS_ABORT_MSG_UNLESS(!m_sendOutbandPktCb.IsNull(), "SendOutbandPktCb not set!");
+        // Check if the flow is stopped
+        if (CheckStopCondition())
+        {
+            return;
+        }
+
+        CongestionTypeTag ctTag(GetTypeId().GetUid());
+        CreditRequestTag crTag(true);
+        SocketIpTosTag ipTosTag;
+        ipTosTag.SetTos(m_dataPrio);
+
+        std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag, ipTosTag};
+
+        // Send out-of-band credit request packet
+        bool success = m_sendOutbandPktCb(0, true, packetTags);
+        if (success)
+        {
+            NS_LOG_DEBUG(Simulator::Now().GetNanoSeconds() << " Send Credit Req ");
+        }
+        else
+        {
+            NS_LOG_WARN("Send Credit Req failed!");
+        }
+        // Start probe
+        ScheduleNextCreditReq(rto);
+    }
+
     void RoCEv2CreditSpray::UpdateStateWithRcvACK(Ptr<Packet> ack,
                                const RoCEv2Header& roce,
                                const uint32_t senderNextPSN)
     {
         NS_LOG_FUNCTION(this << ack << roce << senderNextPSN);
 
+        if(m_grantBytesRemaining>0){
+            m_grantBytesRemaining=0;
+            m_sockState->SetCredit(0);
+        }
+        
         CreditSeqTag csTag;
         PathTag pathTag;
         bool hasPathTag = ack->PeekPacketTag(pathTag);
+        bool hasCsTag = ack->PeekPacketTag(csTag);
         NS_ABORT_UNLESS(hasPathTag);
         NS_ABORT_UNLESS(pathTag.forward);
-        bool hasCsTag = ack->PeekPacketTag(csTag);
         NS_ABORT_UNLESS(hasCsTag);
 
         pathTag.forward=false;
         m_senderPathTagList.push(PathTag(pathTag));
+
         m_senderCreditSeqList.push(csTag.GetSeq());
 
         // int32_t ackedPkts =
@@ -195,49 +287,6 @@ NS_OBJECT_ENSURE_REGISTERED(RoCEv2CreditSpray);
     //     //std::cout << "flow finish" << std::endl;
     // }
     }
-    void
-    RoCEv2CreditSpray::SendCreditRequest(Time rto)
-    {
-    NS_LOG_FUNCTION(this << rto);
-    // To stop sending, we set the cwnd to 0
-    //m_sockState->SetCwnd(0);
-    m_sockState->SetCredit(0);
-    // Check if a Req is just sent
-    if (m_cReqTimeOut.IsRunning())
-    {
-        return;
-    }
-
-    NS_ABORT_MSG_UNLESS(!m_sendOutbandPktCb.IsNull(), "SendOutbandPktCb not set!");
-    // Check if the flow is stopped
-    if (CheckStopCondition())
-    {
-        return;
-    }
-
-    CongestionTypeTag ctTag(GetTypeId().GetUid());
-    CreditRequestTag crTag(true);
-    SocketIpTosTag ipTosTag;
-    ipTosTag.SetTos(m_dataPrio);
-
-    std::vector<std::reference_wrapper<const Tag>> packetTags{ctTag, crTag,ipTosTag};
-
-    // Send out-of-band credit request packet
-    bool success = m_sendOutbandPktCb(0, true, packetTags);
-    if (success)
-    {
-        // m_probeSeq += 1;
-        // // Log the time and seq of the probe
-        NS_LOG_DEBUG(Simulator::Now().GetNanoSeconds() << " Send Credit Req ");
-    }
-    else
-    {
-        NS_LOG_WARN("Send Credit Req failed!");
-    }
-    // Start probe
-    ScheduleNextCreditReq(rto);
-    }
-
 void
 RoCEv2CreditSpray::SendCreditAck(uint32_t psn)
 {
@@ -364,7 +413,11 @@ RoCEv2CreditSpray::UpdateStateRecvData(Ptr<Packet> packet,
 
     CreditSeqTag csTag;
     bool hasTag = packet->PeekPacketTag(csTag);
-    NS_ABORT_UNLESS(hasTag);
+    if (!hasTag)
+    {
+        RoCEv2CreditCc::UpdateStateRecvData(packet, roce);
+        return;
+    }
     uint64_t pktSeq=csTag.GetSeq();
     //NS_ASSERT(pktSeq>m_lastRecvCreditSeq);
     //m_creditLossCount+=pktSeq-m_lastRecvCreditSeq-1;

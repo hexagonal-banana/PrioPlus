@@ -383,6 +383,7 @@ class RoCEv2SocketState : public Object
     {
         return m_credit;
     }
+
     
     inline void SetTxBuffer(DcbTxBuffer* txBuffer)
     {

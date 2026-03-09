@@ -1,9 +1,9 @@
 {
     "inputFile": {
-        "topo": "config/topo/fat6.txt"
+        "topo": "config/topo/fat-16-4-5.txt"
     },
     "outputFile": {
-        "resultFile": "output/*.json"
+        "resultFile": "output/*-grant.json"
     },
     "runtimeConfig": {
         "seed": 1,
@@ -29,7 +29,7 @@
             "AckMode": "RECEIVER_DRIVEN"
         },
         "SwitchNode": {
-            "RoutingMode": "PER_FLOW_SYMMETRIC"
+            "RoutingMode": "PER_PACKET_SYMMETRIC"
         }, 
         "RoCEv2SocketState": {
             "MinRateRatio": 0.001
@@ -65,7 +65,7 @@
                 },
                 "prioRateLimits" :[
                     {"priority": 0, "ratio": 0.03, "burstSize": 100}
-                ]
+                ]                
             },
             {
                 "nodes": "switch",
@@ -99,7 +99,7 @@
                 },
                 "prioRateLimits" :[
                     {"priority": 0, "ratio": 0.03, "burstSize": 100}
-                ]
+                ]   
             }
         ],
         "linkConfig": [
@@ -117,25 +117,26 @@
     },
     "applicationConfig": [
         {
-            "NOTE": "Background traffic",
+            "NOTE": "Incast",
             "appType": "ns3::DcbTrafficGenApplication",
             "nodes": "all",
             "protocolGroup": "RoCEv2",
             "applicationConfig":{
-                "CongestionType": "ns3::RoCEv2ExpressPass",
+                "CongestionType": "ns3::RoCEv2CreditSpray",
                 "SendEnabled": true,
-                "TrafficPattern": "CDF",
-                "TrafficLoad": 0.8,
-                "FlowType": "Background",
-                "FlowPriority":1
-            },
-            "cdf": {
-                "cdfFile": "config/trace/WebSearch_distribution.txt",
-                "avgSize": 0,
-                "scaleFactor": 0
+                "TrafficPattern": "FileRequest",
+                "FileRequestNodesNum": 32,
+                "IncastFlowInterval":"0.0375us",
+                "TrafficSizeBytes": 450000,
+                "TrafficLoad": 0.15,
+                "FlowPriority":1,
+                "FlowType": "Incast"
             },
             "socketConfig": {
                 "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "GrantBytesFactor": 1.0
             },
             "startTime": "0.1s",
             "stopTime": "0.11s"
@@ -150,6 +151,6 @@
                 "FlowPriority":0
             },
             "startTime": "0.1s"
-        }  
+        }
     ]
 }

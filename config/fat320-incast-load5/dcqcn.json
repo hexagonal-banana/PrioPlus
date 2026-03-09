@@ -117,36 +117,9 @@
                 "TrafficPattern": "FileRequest",
                 "FileRequestNodesNum": 32,
                 "IncastFlowInterval": "0.0375us",
-                "TrafficSizeBytes": 45000000,
-                "TrafficLoad": 0.15,
+                "TrafficSizeBytes": 4500000,
+                "TrafficLoad": 0.5,
                 "FlowType": "Incast"
-            },
-            "socketConfig": {
-                "InnerPriority": 0
-            },
-            "congestionConfig": {
-                "RateAIRatio": 0.001,
-                "G": 0.00390625
-            },
-            "startTime": "0.1s",
-            "stopTime": "0.11s"
-        },
-        {
-            "NOTE": "Background traffic",
-            "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "all",
-            "protocolGroup": "RoCEv2",
-            "applicationConfig": {
-                "CongestionType": "ns3::RoCEv2Dcqcn",
-                "SendEnabled": true,
-                "TrafficPattern": "CDF",
-                "TrafficLoad": 0.3,
-                "FlowType": "Background"
-            },
-            "cdf": {
-                "cdfFile": "config/trace/FbHdp_distribution.txt",
-                "avgSize": 0,
-                "scaleFactor": 0
             },
             "socketConfig": {
                 "InnerPriority": 0

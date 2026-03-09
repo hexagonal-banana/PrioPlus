@@ -288,7 +288,10 @@ RoCEv2Socket::SendPendingPacket()
     const uint32_t sz =
         item.m_payload->GetSize() + m_innerProto->GetHeaderSize() + m_ccOps->GetExtraHeaderSize();
 
-    if(m_ackMode==RECEIVER_DRIVEN)m_sockState->SetCredit(m_sockState->GetCredit() - totalPacketSize);
+    if (m_ackMode == RECEIVER_DRIVEN)
+    {
+        m_sockState->SetCredit(m_sockState->GetCredit() - totalPacketSize);
+    }
     DoSendDataPacket(item);
 
     // Control the send rate by interval of sending packets.

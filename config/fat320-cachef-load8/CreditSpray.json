@@ -69,7 +69,7 @@
             },
             {
                 "nodes": "switch",
-                "bufferSize": "10240MiB",
+                "bufferSize": "32MiB",
                 "numQueuePerPort": 8,
                 "numLosslessQueue": 2,
                 "trafficControlLayer": "ns3::DcbTrafficControl",

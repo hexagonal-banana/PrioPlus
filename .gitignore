@@ -59,6 +59,7 @@ vcpkg/
 
 data/
 output/
+figures/
 
 # Ignore patches
 *.patch

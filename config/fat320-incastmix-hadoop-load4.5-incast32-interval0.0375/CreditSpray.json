@@ -3,7 +3,7 @@
         "topo": "config/topo/fat-16-4-5.txt"
     },
     "outputFile": {
-        "resultFile": "output/*.json"
+        "resultFile": "output/*-bigincast.json"
     },
     "runtimeConfig": {
         "seed": 1,
@@ -69,7 +69,7 @@
             },
             {
                 "nodes": "switch",
-                "bufferSize": "10240MiB",
+                "bufferSize": "32MiB",
                 "numQueuePerPort": 8,
                 "numLosslessQueue": 2,
                 "trafficControlLayer": "ns3::DcbTrafficControl",
@@ -127,7 +127,7 @@
                 "TrafficPattern": "FileRequest",
                 "FileRequestNodesNum": 32,
                 "IncastFlowInterval":"0.0375us",
-                "TrafficSizeBytes": 450000,
+                "TrafficSizeBytes": 45000000,
                 "TrafficLoad": 0.15,
                 "FlowPriority":1,
                 "FlowType": "Incast"

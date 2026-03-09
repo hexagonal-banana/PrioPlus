@@ -1,14 +1,14 @@
 {
     "inputFile": {
-        "topo": "config/topo/fat6.txt"
+        "topo": "config/topo/fat-16-4-5.txt"
     },
     "outputFile": {
-        "resultFile": "output/*.json"
+        "resultFile": "output/*-bigincast.json"
     },
     "runtimeConfig": {
         "seed": 1,
         "runningTime": "1s",
-        "stopTime": "3s"
+        "stopTime": "10s"
     },
     "defaultConfig": {
         "TcpL4Protocol": {
@@ -25,12 +25,8 @@
             "Timestamp": false
         },
         "RoCEv2Socket": {
-            "RetxMode": "RTO_ONLY",
-            "AckMode": "RECEIVER_DRIVEN"
+            "RetxMode": "GBN"
         },
-        "SwitchNode": {
-            "RoutingMode": "PER_PACKET_SYMMETRIC"
-        }, 
         "RoCEv2SocketState": {
             "MinRateRatio": 0.001
         }
@@ -62,10 +58,7 @@
                 "innerQueueDisc": "ns3::FifoQueueDiscEcn",
                 "innerQueueDiscConfig": {
                     "MaxSize": "10MiB"
-                },
-                "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 100}
-                ]
+                }
             },
             {
                 "nodes": "switch",
@@ -96,10 +89,7 @@
                     "EcnKMin": "400KiB",
                     "EcnKMax": "1600KiB",
                     "EcnPMax": 0.2
-                },
-                "prioRateLimits" :[
-                    {"priority": 0, "ratio": 0.03, "burstSize": 100}
-                ]
+                }
             }
         ],
         "linkConfig": [
@@ -117,39 +107,28 @@
     },
     "applicationConfig": [
         {
-            "NOTE": "Background traffic",
-            "appType": "ns3::DcbTrafficGenApplication",
-            "nodes": "all",
-            "protocolGroup": "RoCEv2",
-            "applicationConfig":{
-                "CongestionType": "ns3::RoCEv2CreditSpray",
-                "SendEnabled": true,
-                "TrafficPattern": "CDF",
-                "TrafficLoad": 0.8,
-                "FlowType": "Background",
-                "FlowPriority":1
-            },
-            "cdf": {
-                "cdfFile": "config/trace/WebSearch_distribution.txt",
-                "avgSize": 0,
-                "scaleFactor": 0
-            },
-            "socketConfig": {
-                "InnerPriority": 0
-            },
-            "startTime": "0.1s",
-            "stopTime": "0.11s"
-        },
-        {
-            "NOTE": "Recevier side applciation",
+            "NOTE": "Incast",
             "appType": "ns3::DcbTrafficGenApplication",
             "nodes": "all",
             "protocolGroup": "RoCEv2",
             "applicationConfig": {
-                "SendEnabled": false,
-                "FlowPriority":0
+                "CongestionType": "ns3::RoCEv2Hpcc",
+                "SendEnabled": true,
+                "TrafficPattern": "FileRequest",
+                "FileRequestNodesNum": 32,
+                "IncastFlowInterval": "0.0375us",
+                "TrafficSizeBytes": 4500000,
+                "TrafficLoad": 0.5,
+                "FlowType": "Incast"
             },
-            "startTime": "0.1s"
-        }        
+            "socketConfig": {
+                "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "RateAIRatio": 0.0005
+            },
+            "startTime": "0.1s",
+            "stopTime": "0.11s"
+        }
     ]
 }
