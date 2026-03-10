@@ -125,6 +125,29 @@ TrafficControlLayer::RegisterProtocolHandler(Node::ProtocolHandler handler,
 }
 
 void
+TrafficControlLayer::ClearProtocolHandlers(uint16_t protocolType, Ptr<NetDevice> device)
+{
+    NS_LOG_FUNCTION(this << protocolType << device);
+
+    auto it = m_handlers.begin();
+    while (it != m_handlers.end())
+    {
+        bool matchProto = (it->protocol == protocolType);
+        bool matchDev   = (!device) || (it->device == device);
+        if (matchProto && matchDev)
+        {
+            NS_LOG_DEBUG("Removed handler for protocol " << protocolType
+                         << " device " << device);
+            it = m_handlers.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+}
+
+void
 TrafficControlLayer::ScanDevices()
 {
     NS_LOG_FUNCTION(this);

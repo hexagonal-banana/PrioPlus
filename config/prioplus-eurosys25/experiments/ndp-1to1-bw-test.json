@@ -1,0 +1,116 @@
+{
+    "NOTE": "NDP 1-to-1 带宽饱和测试: 单条 1GB 大流 host0→host1，验证 100Gbps 链路是否可被打满",
+    "inputFile": {
+        "topo": "config/topo/1to1.txt"
+    },
+    "outputFile": {
+        "resultFile": "output/ndp-tests/ndp-1to1-bw-test/ndp-1to1-bw-test-*.json"
+    },
+    "runtimeConfig": {
+        "seed": 42,
+        "runningTime": "0.5s",
+        "stopTime": "2s"
+    },
+    "defaultConfig": {
+        "NdpSocket": {
+            "FirstWindowSize": 103,
+            "RtoMs": 0.1
+        },
+        "NdpL4Protocol": {
+            "PullMtu": 1456
+        },
+        "NdpSwitchQueue": {
+            "LowQueueMaxPackets": 8,
+            "HighQueueMaxPackets": 20000,
+            "HighQueueWeight": 10,
+            "LowQueueWeight": 1
+        }
+    },
+    "globalConfig": {
+        "detailedSenderStats": true,
+        "detailedRetxStats": true,
+        "detailedQlengthStats": true,
+        "qlengthRecordInterval": "100us",
+        "detailedThroughputStats": true,
+        "deviceThroughputRecordInterval": "100us",
+        "ndpTrimStats": true,
+        "ndpRtsStats": false
+    },
+    "topologyConfig": {
+        "flowControlConfig": [
+            {
+                "nodes": "host",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpHostQueue",
+                "queueDiscConfig": {
+                    "MaxPackets": 50000
+                }
+            },
+            {
+                "nodes": "switch",
+                "bufferSize": "3200MiB",
+                "bufferPerPort": "3.2MiB",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpSwitchQueue",
+                "queueDiscConfig": {
+                    "LowQueueMaxPackets": 8,
+                    "HighQueueMaxPackets": 20000,
+                    "HighQueueWeight": 10,
+                    "LowQueueWeight": 1
+                }
+            }
+        ],
+        "linkConfig": [
+            {
+                "links": "0",
+                "rate": "100Gbps",
+                "delay": "3us"
+            }
+        ],
+        "multipathConfig": {
+            "numPaths": 1,
+            "baseNetwork": "10.0.0.0",
+            "networkMask": "255.255.0.0"
+        }
+    },
+    "applicationConfig": [
+        {
+            "NOTE": "发送方: host0 → host1，单条 1GB 大流，验证链路带宽是否饱和",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[0]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 1000000000,
+                "DestFixed": true,
+                "DestinationNode": 1
+            },
+            "ndpConfig": {
+                "firstWindowSize": 103,
+                "pullLinkRate": "100Gbps"
+            },
+            "multipathConfig": {
+                "numPaths": 1,
+                "pathSelection": "random"
+            },
+            "startTime": "0.1s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "接收方: host1 被动接收，pullLinkRate 控制 PULL 信用发送速率（决定吞吐量上限）",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[1]",
+            "applicationConfig": {
+                "SendEnabled": false
+            },
+            "ndpConfig": {
+                "pullLinkRate": "100Gbps"
+            },
+            "startTime": "0.1s"
+        }
+    ]
+}

@@ -1,0 +1,4 @@
+5 1 4
+# Simple incast topology: 1 switch + 4 hosts (0: receiver, 1-3: senders)
+# Format: totalNodes numSwitches numHosts
+# Hosts: 0-3, Switch: 4

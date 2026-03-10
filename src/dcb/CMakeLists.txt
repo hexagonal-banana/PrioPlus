@@ -7,6 +7,8 @@ build_lib(
 	  helper/dcb-traffic-gen-application-helper.cc
 	  helper/csv-writer.cc
 	  helper/tracer-extension.cc
+	  helper/ndp-multipath-helper.cc
+	  helper/ndp-application-helper.cc
 	  model/dcb-traffic-control.cc
 	  model/dcb-net-device.cc
 	  model/dcb-channel.cc
@@ -42,11 +44,17 @@ build_lib(
 	  model/switch-node.cc
 	  model/leaky-bucket.cc
 	  model/rocev2-expresspass.cc
+	  model/ndp-socket.cc
+	  model/ndp-l4-protocol.cc
+	  model/ndp-switch-queue.cc
+	  model/ndp-host-queue.cc
+	  model/ndp-traffic-gen-application.cc
 	  utils/hpcc-header.cc
 	  utils/poseidon-header.cc
 	  utils/pfc-frame.cc
 	  utils/real-time-stats-tag.cc
 	  utils/flow-identifier.cc
+	  utils/ndp-header.cc
   HEADER_FILES
       helper/dcb-net-device-helper.h
       helper/dcb-stack-helper.h
@@ -54,6 +62,8 @@ build_lib(
 	  helper/dcb-traffic-gen-application-helper.h
 	  helper/csv-writer.h
 	  helper/tracer-extension.h
+	  helper/ndp-multipath-helper.h
+	  helper/ndp-application-helper.h
 	  model/dcb-traffic-control.h
 	  model/dcb-net-device.h
 	  model/dcb-channel.h
@@ -88,11 +98,16 @@ build_lib(
 	  model/switch-node.h
 	  model/leaky-bucket.h
 	  model/rocev2-expresspass.h
+	  model/ndp-socket.h
+	  model/ndp-l4-protocol.h
+	  model/ndp-switch-queue.h
+	  model/ndp-traffic-gen-application.h
 	  utils/hpcc-header.h
 	  utils/poseidon-header.h
 	  utils/pfc-frame.h
 	  utils/real-time-stats-tag.h
 	  utils/flow-identifier.h
+	  utils/ndp-header.h
   LIBRARIES_TO_LINK
       ${libcore}
 	  ${libnetwork}
@@ -100,4 +115,22 @@ build_lib(
 	  ${traffic-control}
 	  ${libdc-env}
 	  ${Boost_LIBRARIES}
+	  Boost::json
 )
+# NDP Test Suite - Commented out due to missing build_lib_tests macro
+# if(${ENABLE_TESTS})
+#   build_lib_tests(
+#     NAME dcb-test
+#     HEADER_FILES
+#     LIBRARIES_TO_LINK
+#         ${libcore}
+#         ${libnetwork}
+#         ${libinternet}
+#         ${libpoint-to-point}
+#         ${libapplications}
+#         ${libtraffic-control}
+#         ${libdcb}
+#     SOURCE_FILES
+#         test/ndp-test-suite.cc
+#   )
+# endif()

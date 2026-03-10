@@ -1,11 +1,12 @@
 #include "switch-node.h"
 
+#include <iomanip>
 #include "ns3/dcb-traffic-control.h"
 #include "ns3/internet-module.h"
 #include "ns3/ipv4-global-routing.h"
 #include "ns3/point-to-point-net-device.h"
 #include "ns3/traffic-control-layer.h"
-#include "ns3/random-variable-stream.h"  // 添加随机变量流头文件
+#include "ns3/random-variable-stream.h"
 
 namespace ns3
 {
@@ -14,8 +15,16 @@ NS_LOG_COMPONENT_DEFINE("SwitchNode");
 
 NS_OBJECT_ENSURE_REGISTERED(SwitchNode);
 
-// Define the static member variable
+// Define the static member variables
 uint64_t SwitchNode::m_randStream = 0;
+std::map<uint32_t, std::vector<std::pair<uint32_t, int>>> SwitchNode::s_multipathRoutes;
+
+// Debug counters
+static uint64_t g_sw_forwarded       = 0;  ///< packets forwarded via tc->Send
+static uint64_t g_sw_noroute         = 0;  ///< packets routed to default port 1 (no exact route)
+static uint64_t g_sw_recv_after_tc   = 0;  ///< ReceivePacketAfterTc calls
+static uint64_t g_sw_recv_from_dev   = 0;  ///< ReceiveFromDevice calls
+static uint32_t s_swRoutingTableSize = 0;  ///< total routing table entries (set during DoInit)
 
 TypeId
 SwitchNode::GetTypeId()
@@ -46,11 +55,62 @@ SwitchNode::SwitchNode()
 void
 SwitchNode::DoInitialize()
 {
-    // for (uint32_t i = 0; i < GetNDevices(); i++)
-    // {
-    //     Ptr<NetDevice> dev = GetDevice(i);
-    //     dev->SetReceiveCallback(MakeCallback(&SwitchNode::ReceiveFromDevice, this));
-    // }
+    // ── Prevent double-processing of transit packets ──────────────────────
+    //
+    // By default, Ipv4L3Protocol::AddInterface() registers BOTH:
+    //   (a) TrafficControlLayer::Receive  on the Node
+    //   (b) Ipv4L3Protocol::Receive       on the TrafficControlLayer
+    //
+    // And json-topology-helper.cc adds:
+    //   (c) SwitchNode::ReceivePacketAfterTc  on the TrafficControlLayer
+    //
+    // When a packet arrives at a switch, the base TrafficControlLayer::Receive()
+    // calls ALL matching handlers → both (b) and (c) → double processing.
+    //
+    // DcbTrafficControl (used by RoCEv2) avoids this by overriding Receive()
+    // with reverse-iteration + break, so only (c) runs.
+    //
+    // For all switch nodes (NDP and RoCEv2 alike), we remove handler (b) from
+    // the TC layer and keep only (c).  This is safe for RoCEv2 because
+    // DcbTrafficControl::Receive() already skips (b) via its break logic;
+    // removing it just eliminates dead code.
+    //
+    // This replaces the previous approach which bypassed the entire
+    // TrafficControlLayer by overriding m_rxCallback on each device.
+    // Now NDP follows the SAME standard ns-3 receive path as RoCEv2:
+    //   DcbNetDevice::Receive()
+    //     → Node::NonPromiscReceiveFromDevice()
+    //       → TrafficControlLayer::Receive()
+    //         → SwitchNode::ReceivePacketAfterTc()   [only handler]
+    //           → SwitchNode::SendIpv4Packet()       [ECMP routing]
+    //             → TrafficControlLayer::Send()
+    //               → QueueDisc::Enqueue()
+    //                 → DcbNetDevice::Send()
+    // ──────────────────────────────────────────────────────────────────────
+    {
+        Ptr<TrafficControlLayer> tc = GetObject<TrafficControlLayer>();
+        if (tc)
+        {
+            for (uint32_t i = 1; i < GetNDevices(); i++)   // skip loopback (dev 0)
+            {
+                Ptr<NetDevice> dev = GetDevice(i);
+
+                // Remove all IPv4 handlers on TC for this device
+                // (this removes Ipv4L3Protocol::Receive AND any previously
+                //  registered ReceivePacketAfterTc from json-topology-helper)
+                tc->ClearProtocolHandlers(Ipv4L3Protocol::PROT_NUMBER, dev);
+
+                // Re-register ONLY our custom forwarding handler
+                tc->RegisterProtocolHandler(
+                    MakeCallback(&SwitchNode::ReceivePacketAfterTc, this),
+                    Ipv4L3Protocol::PROT_NUMBER,
+                    dev);
+            }
+            NS_LOG_INFO("SwitchNode " << GetId()
+                        << ": Replaced TC handlers with ReceivePacketAfterTc on "
+                        << (GetNDevices() - 1) << " devices");
+        }
+    }
 
     // setup route table
     std::unordered_map<uint32_t, std::set<int>> routeTable;
@@ -85,8 +145,39 @@ SwitchNode::DoInitialize()
         // NS_LOG_DEBUG("[Switch " << GetId() << "] ns3::GlobalRouting for " << Ipv4Address{dstIp}
         //                         << " = " << m_routeTable[dstIp]);
     }
+    s_swRoutingTableSize += m_routeTable.size();
+
+    // ── Apply pre-registered multipath routes ─────────────────────────────
+    // These deterministic routes override any ECMP entries from GlobalRouter.
+    // They are registered by NdpMultipathHelper::ConfigureFatTreeRouting()
+    // before Simulator::Run(), so they are available here.
+    {
+        auto mIt = s_multipathRoutes.find(GetId());
+        if (mIt != s_multipathRoutes.end())
+        {
+            for (auto& [ip, devIdx] : mIt->second)
+            {
+                m_routeTable[ip] = {devIdx};  // single deterministic next-hop
+            }
+            NS_LOG_INFO("SwitchNode " << GetId()
+                        << ": Injected " << mIt->second.size()
+                        << " multipath routes");
+        }
+    }
 
     Node::DoInitialize();
+}
+
+void
+SwitchNode::AddMultipathRoute(uint32_t switchId, uint32_t ip, int devIdx)
+{
+    s_multipathRoutes[switchId].emplace_back(ip, devIdx);
+}
+
+void
+SwitchNode::ClearMultipathRoutes()
+{
+    s_multipathRoutes.clear();
 }
 
 uint32_t
@@ -96,7 +187,33 @@ SwitchNode::GetEgressDevIndex(Ptr<Packet> packet)
     Ptr<Packet> p = packet->Copy();
     p->RemoveHeader(ipv4H);
 
-    auto& egressNetDevs = m_routeTable[ipv4H.GetDestination().Get()];
+    Ipv4Address destAddr = ipv4H.GetDestination();
+    auto it = m_routeTable.find(destAddr.Get());
+    
+    // If exact destination not found, try subnet matching
+    if (it == m_routeTable.end() || it->second.empty())
+    {
+        uint32_t destIp = destAddr.Get();
+        
+        // Try /16 subnet match
+        uint32_t subnet16 = destIp & 0xFFFF0000;
+        it = m_routeTable.find(subnet16);
+        
+        if (it == m_routeTable.end() || it->second.empty())
+        {
+            // Try /24 subnet match
+            uint32_t subnet24 = destIp & 0xFFFFFF00;
+            it = m_routeTable.find(subnet24);
+            
+            if (it == m_routeTable.end() || it->second.empty())
+            {
+                g_sw_noroute++;
+                return 1;  // Default interface
+            }
+        }
+    }
+    
+    auto& egressNetDevs = it->second;
     if (egressNetDevs.size() == 1)
     {
         return egressNetDevs[0];
@@ -150,7 +267,42 @@ uint32_t SwitchNode::GetEgressDevIndexRandom(Ptr<Packet> packet)
     Ptr<Packet> p = packet->Copy();
     p->RemoveHeader(ipv4H);
 
-    auto& egressNetDevs = m_routeTable[ipv4H.GetDestination().Get()];
+    Ipv4Address destAddr = ipv4H.GetDestination();
+    auto it = m_routeTable.find(destAddr.Get());
+    
+    // If exact destination not found, try subnet matching
+    if (it == m_routeTable.end() || it->second.empty())
+    {
+        // Try to find a route by matching subnet (e.g., 10.0.x.x matches 10.0.0.0/16)
+        uint32_t destIp = destAddr.Get();
+        
+        // Try /16 subnet match (mask: 255.255.0.0)
+        uint32_t subnet16 = destIp & 0xFFFF0000;
+        it = m_routeTable.find(subnet16);
+        
+        if (it == m_routeTable.end() || it->second.empty())
+        {
+            // Try /24 subnet match (mask: 255.255.255.0)
+            uint32_t subnet24 = destIp & 0xFFFFFF00;
+            it = m_routeTable.find(subnet24);
+            
+            if (it == m_routeTable.end() || it->second.empty())
+            {
+                // No route found, use default route (interface 1)
+                g_sw_noroute++;
+                return 1;
+            }
+        }
+    }
+    
+    auto& egressNetDevs = it->second;
+    if (egressNetDevs.empty())
+    {
+        // Fallback to interface 1 if route table entry is empty
+        g_sw_noroute++;
+        return 1;
+    }
+    
     return egressNetDevs[m_rand->GetInteger(0, egressNetDevs.size() - 1)];
 }
 void
@@ -211,6 +363,7 @@ SwitchNode::SendIpv4Packet(Ptr<NetDevice> inDev, Ptr<Packet> packet)
         tc = GetObject<TrafficControlLayer>();
     }
 
+    g_sw_forwarded++;
     tc->Send(
         dev,
         Create<Ipv4QueueDiscItem>(packet, dev->GetAddress(), Ipv4L3Protocol::PROT_NUMBER, ipv4H));
@@ -235,6 +388,7 @@ SwitchNode::ReceiveFromDevice(Ptr<NetDevice> device,
 void
 SwitchNode::ReceiveIpv4Packet(Ptr<NetDevice> inDev, Ptr<const Packet> packet)
 {
+    g_sw_recv_from_dev++;
     SendIpv4Packet(inDev,packet->Copy());
 }
 
@@ -247,7 +401,22 @@ SwitchNode::ReceivePacketAfterTc(Ptr<NetDevice> dev,
                                  NetDevice::PacketType packetType)
 {
     NS_LOG_FUNCTION(this << dev << protocol << from << to);
+    g_sw_recv_after_tc++;
     SendIpv4Packet(dev,packet->Copy());
+}
+
+void
+PrintSwitchNodeStats()
+{
+    std::cout << "╔══════════════════════════════════════════════════╗\n"
+              << "║        SwitchNode Routing Statistics             ║\n"
+              << "╠══════════════════════════════════════════════════╣\n"
+              << "║  ReceivePacketAfterTc calls:   " << std::setw(8) << g_sw_recv_after_tc << "  ║\n"
+              << "║  ReceiveFromDevice calls:      " << std::setw(8) << g_sw_recv_from_dev << "  ║\n"
+              << "║  Total packets forwarded (tc): " << std::setw(8) << g_sw_forwarded     << "  ║\n"
+              << "║  Default-route fallbacks:      " << std::setw(8) << g_sw_noroute       << "  ║\n"
+              << "║  Switch routing table entries: " << std::setw(8) << s_swRoutingTableSize << "  ║\n"
+              << "╚══════════════════════════════════════════════════╝\n";
 }
 
 } // namespace ns3

@@ -1,0 +1,229 @@
+{
+    "NOTE": "NDP Per-Packet Multipath on Fat-tree k=4: Pod0+Pod1 → Pod2 cross-pod incast (8 flows, 2:1 per dest)",
+    "NOTE2": "numPaths=4 → sender selects core switch per packet via 10.X.0.destId addressing",
+    "inputFile": {
+        "topo": "config/topo/fat4.txt"
+    },
+    "outputFile": {
+        "resultFile": "output/ndp-tests/ndp-fat4-multipath/ndp-fat4-multipath-*.json"
+    },
+    "runtimeConfig": {
+        "seed": 42,
+        "runningTime": "0.1s",
+        "stopTime": "0.1s"
+    },
+    "defaultConfig": {
+        "NdpSocket": {
+            "FirstWindowSize": 50,
+            "RtoMs": 0.5
+        },
+        "NdpL4Protocol": {
+            "PullMtu": 1456
+        },
+        "NdpSwitchQueue": {
+            "LowQueueMaxPackets": 8,
+            "HighQueueMaxPackets": 20000,
+            "HighQueueWeight": 10,
+            "LowQueueWeight": 1
+        }
+    },
+    "globalConfig": {
+        "detailedSenderStats": true,
+        "detailedRetxStats": false,
+        "detailedQlengthStats": true,
+        "qlengthRecordInterval": "100us",
+        "detailedThroughputStats": true,
+        "deviceThroughputRecordInterval": "100us",
+        "ndpTrimStats": true,
+        "ndpRtsStats": false
+    },
+    "topologyConfig": {
+        "flowControlConfig": [
+            {
+                "nodes": "host",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpHostQueue",
+                "queueDiscConfig": {
+                    "MaxPackets": 50000
+                }
+            },
+            {
+                "nodes": "switch",
+                "bufferSize": "3200MiB",
+                "bufferPerPort": "3.2MiB",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpSwitchQueue",
+                "queueDiscConfig": {
+                    "LowQueueMaxPackets": 8,
+                    "HighQueueMaxPackets": 20000,
+                    "HighQueueWeight": 10,
+                    "LowQueueWeight": 1
+                }
+            }
+        ],
+        "linkConfig": [
+            {
+                "links": "0",
+                "rate": "100Gbps",
+                "delay": "1us"
+            }
+        ],
+        "multipathConfig": {
+            "numPaths": 4,
+            "topology": "auto",
+            "baseNetwork": "10.0.0.0",
+            "networkMask": "255.255.0.0"
+        }
+    },
+    "applicationConfig": [
+        {
+            "NOTE": "Pod0 → Pod2: Host 0 → Host 8",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[0]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 8
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Pod0 → Pod2: Host 1 → Host 9",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[1]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 9
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Pod0 → Pod2: Host 2 → Host 10",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[2]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 10
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Pod0 → Pod2: Host 3 → Host 11",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[3]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 11
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Pod1 → Pod2: Host 4 → Host 8 (incast with H0→H8)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[4]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 8
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Pod1 → Pod2: Host 5 → Host 9 (incast with H1→H9)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[5]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 9
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Pod1 → Pod2: Host 6 → Host 10 (incast with H2→H10)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[6]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 10
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Pod1 → Pod2: Host 7 → Host 11 (incast with H3→H11)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[7]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 50000000,
+                "DestFixed": true,
+                "DestinationNode": 11
+            },
+            "ndpConfig": { "firstWindowSize": 50, "pullLinkRate": "100Gbps" },
+            "multipathConfig": { "numPaths": 4, "pathSelection": "random" },
+            "startTime": "0.01s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Receivers: Hosts 8-11 in Pod 2 (each receives 2-to-1 incast)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[8:12]",
+            "applicationConfig": {
+                "SendEnabled": false
+            },
+            "ndpConfig": { "pullLinkRate": "100Gbps" },
+            "startTime": "0.01s"
+        }
+    ]
+}
