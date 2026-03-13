@@ -242,32 +242,46 @@ ConstructAppStatsObj(ApplicationContainer& apps)
        else
        {
            // Try NdpTrafficGenApplication
-           Ptr<NdpTrafficGenApplication> ndpApp = DynamicCast<NdpTrafficGenApplication>(apps.Get(i));
+            Ptr<NdpTrafficGenApplication> ndpApp = DynamicCast<NdpTrafficGenApplication>(apps.Get(i));
            if (ndpApp != nullptr && ndpApp->IsSendEnabled())
            {
-               Time fct = ndpApp->GetFlowCompletionTime();
-               if (fct > Time(0))
+               // Main (non-CDF) socket stats
+               auto ndpStats = ndpApp->GetNdpFlowStats();
+               if (ndpStats->tFct > Time(0))
                {
-                   vFct.push_back(fct);
-                   // Get flow size from bytes sent
-                   uint64_t bytes = ndpApp->GetBytesSent();
-                   totalBytes += bytes;
-                   totalSentBytes += bytes;  // NDP doesn't retransmit at this level
-                   totalPkts += ndpApp->GetPacketsSent();
-                   totalSentPkts += ndpApp->GetPacketsSent();
-                   
-                   // Update time range for NDP flows
-                   Time flowStartTime = ndpApp->GetStartTime();
-                   Time flowFinishTime = ndpApp->GetFinishTime();
-                   
-                   if (flowStartTime.IsStrictlyPositive())
+                   vFct.push_back(ndpStats->tFct);
+                   totalBytes += ndpStats->nTotalSizeBytes;
+                   totalSentBytes += ndpStats->nTotalSentBytes;
+                   totalPkts += ndpStats->nTotalSizePkts;
+                   totalSentPkts += ndpStats->nTotalSentPkts;
+                   retxCount += ndpStats->nRetxCount;
+
+                   if (ndpStats->tStart.IsStrictlyPositive())
                    {
-                       startTime = std::min(startTime, flowStartTime);
+                       startTime = std::min(startTime, ndpStats->tStart);
                    }
-                   if (flowFinishTime.IsStrictlyPositive())
+                   if (ndpStats->tFinish.IsStrictlyPositive())
                    {
-                       finishTime = std::max(finishTime, flowFinishTime);
+                       finishTime = std::max(finishTime, ndpStats->tFinish);
                    }
+               }
+
+               // CDF completed flow stats
+               const auto& cdfStats = ndpApp->GetCdfCompletedStats();
+               for (const auto& cdfFlowStats : cdfStats)
+               {
+                   if (cdfFlowStats->tFct > Time(0))
+                       vFct.push_back(cdfFlowStats->tFct);
+                   totalBytes += cdfFlowStats->nTotalSizeBytes;
+                   totalSentBytes += cdfFlowStats->nTotalSentBytes;
+                   totalPkts += cdfFlowStats->nTotalSizePkts;
+                   totalSentPkts += cdfFlowStats->nTotalSentPkts;
+                   retxCount += cdfFlowStats->nRetxCount;
+
+                   if (cdfFlowStats->tStart.IsStrictlyPositive())
+                       startTime = std::min(startTime, cdfFlowStats->tStart);
+                   if (cdfFlowStats->tFinish.IsStrictlyPositive())
+                       finishTime = std::max(finishTime, cdfFlowStats->tFinish);
                }
            }
        }
@@ -326,28 +340,23 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
             Ptr<NdpTrafficGenApplication> ndpApp = DynamicCast<NdpTrafficGenApplication>(apps.Get(i));
             if (ndpApp != nullptr && ndpApp->IsSendEnabled())
             {
-                // Create a flow stats entry for each NDP sender application
-                Time fct = ndpApp->GetFlowCompletionTime();
-                if (fct > Time(0))
-                {
-                    // Get socket to retrieve connection information
-                    Ptr<NdpSocket> socket = ndpApp->GetSocket();
-                    
-                    // Create unique flow identifier with actual addresses
+                // Helper lambda to emit one NDP flow entry
+                auto emitNdpFlow = [&](std::shared_ptr<NdpSocket::Stats> stats,
+                                       Ptr<NdpSocket> socket,
+                                       const std::string& flowType) {
                     FlowIdentifier flowId;
                     Address localAddr, peerAddr;
-                    
+
                     if (socket != nullptr)
                     {
                         socket->GetSockName(localAddr);
                         socket->GetPeerName(peerAddr);
-                        
-                        if (InetSocketAddress::IsMatchingType(localAddr) && 
+
+                        if (InetSocketAddress::IsMatchingType(localAddr) &&
                             InetSocketAddress::IsMatchingType(peerAddr))
                         {
                             InetSocketAddress local = InetSocketAddress::ConvertFrom(localAddr);
                             InetSocketAddress peer = InetSocketAddress::ConvertFrom(peerAddr);
-                            
                             flowId.srcAddr = local.GetIpv4();
                             flowId.srcPort = local.GetPort();
                             flowId.dstAddr = peer.GetIpv4();
@@ -355,7 +364,6 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
                         }
                         else
                         {
-                            // Fallback to default
                             flowId.srcAddr = Ipv4Address();
                             flowId.srcPort = ndpFlowCounter;
                             flowId.dstAddr = Ipv4Address();
@@ -364,13 +372,12 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
                     }
                     else
                     {
-                        // Socket not available, use counter-based ID
                         flowId.srcAddr = Ipv4Address();
                         flowId.srcPort = ndpFlowCounter;
                         flowId.dstAddr = Ipv4Address();
                         flowId.dstPort = 0;
                     }
-                    
+
                     auto flowStatsObj = std::make_shared<boost::json::object>();
                     mFlowStatsObjs[flowId] = flowStatsObj;
 
@@ -380,47 +387,42 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
                         {"srcPort", (int64_t)flowId.srcPort},
                         {"dstAddr", flowId.GetDstAddrString()},
                         {"dstPort", (int64_t)flowId.dstPort}};
-                    (*flowStatsObj)["flowType"] = "NDP";
-                    (*flowStatsObj)["flowTag"] = "ndp-flow";
-                    (*flowStatsObj)["totalSizePkts"] = (int64_t)ndpApp->GetPacketsSent();
-                    (*flowStatsObj)["totalSizeBytes"] = (int64_t)ndpApp->GetBytesSent();
+                    (*flowStatsObj)["flowType"] = flowType;
+                    (*flowStatsObj)["flowTag"] = stats->flowTag.empty() ? "ndp-flow" : stats->flowTag;
+                    (*flowStatsObj)["totalSizePkts"] = (int64_t)stats->nTotalSizePkts;
+                    (*flowStatsObj)["totalSizeBytes"] = (int64_t)stats->nTotalSizeBytes;
+                    (*flowStatsObj)["retxCount"] = (int64_t)stats->nRetxCount;
+                    (*flowStatsObj)["fctNs"] = stats->tFct.GetNanoSeconds();
+                    (*flowStatsObj)["startNs"] = stats->tStart.GetNanoSeconds();
+                    (*flowStatsObj)["finishNs"] = stats->tFinish.GetNanoSeconds();
+                    (*flowStatsObj)["overallFlowRate"] = stats->overallFlowRate.GetBitRate();
 
-                    // retxCount – mirrors RoCEv2 format
-                    const auto& ndpFlowStats = ndpApp->GetNdpFlowStats();
-                    (*flowStatsObj)["retxCount"] = (int64_t)ndpFlowStats.retxCount;
+                    boost::json::object ccStatsObj;
+                    ccStatsObj["totalAcks"] = (int64_t)stats->acksReceived;
+                    ccStatsObj["totalNacks"] = (int64_t)stats->nacksReceived;
+                    ccStatsObj["totalPullsConsumed"] = (int64_t)stats->pullsConsumed;
+                    ccStatsObj["totalRtoFires"] = (int64_t)stats->rtoFires;
+                    ccStatsObj["totalRtoTrueLoss"] = (int64_t)stats->rtoTrueLoss;
 
-                    (*flowStatsObj)["fctNs"] = fct.GetNanoSeconds();
-                    (*flowStatsObj)["startNs"] = ndpApp->GetStartTime().GetNanoSeconds();
-                    (*flowStatsObj)["finishNs"] = ndpApp->GetFinishTime().GetNanoSeconds();
-                    (*flowStatsObj)["overallFlowRate"] = 
-                        (fct.GetSeconds() > 0) ? (ndpApp->GetBytesSent() * 8.0 / fct.GetSeconds()) : 0.0;
-
-                    // ── Detailed per-packet stats (same arrays as RoCEv2) ──
-                    if (ndpFlowStats.detailedStats)
+                    if (stats->bDetailedSenderStats)
                     {
-                        // sentPkt: per-packet {timeNs, sizeByte}
                         boost::json::array sentPktArray;
-                        for (const auto& [time, size] : ndpFlowStats.vSentPkt)
+                        for (const auto& [time, size] : stats->vSentPkt)
                         {
                             sentPktArray.emplace_back(
                                 boost::json::object{{"timeNs", time.GetNanoSeconds()},
                                                     {"sizeByte", (int64_t)size}});
                         }
                         (*flowStatsObj)["sentPkt"] = sentPktArray;
-
-                        // ccRate: NDP has no CC rate; keep empty for format compatibility
                         (*flowStatsObj)["ccRate"] = boost::json::array{};
-                        // ccCwnd: NDP has no cwnd
                         (*flowStatsObj)["ccCwnd"] = boost::json::array{};
-                        // recvEcn: NDP has no ECN
                         (*flowStatsObj)["recvEcn"] = boost::json::array{};
+                    }
 
-                        // ccStats: NDP-specific congestion stats
-                        boost::json::object ccStatsObj;
-
-                        // recvAck: per-ACK {timeNs, seq}
+                    if (stats->bDetailedRetxStats)
+                    {
                         boost::json::array recvAckArray;
-                        for (const auto& [time, seq] : ndpFlowStats.vRecvAck)
+                        for (const auto& [time, seq] : stats->vRecvAck)
                         {
                             recvAckArray.emplace_back(
                                 boost::json::object{{"timeNs", time.GetNanoSeconds()},
@@ -428,27 +430,32 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
                         }
                         ccStatsObj["recvAck"] = recvAckArray;
 
-                        // recvNack: per-NACK {timeNs, seq}
                         boost::json::array recvNackArray;
-                        for (const auto& [time, seq] : ndpFlowStats.vRecvNack)
+                        for (const auto& [time, seq] : stats->vRecvNack)
                         {
                             recvNackArray.emplace_back(
                                 boost::json::object{{"timeNs", time.GetNanoSeconds()},
                                                     {"seq", (int64_t)seq}});
                         }
                         ccStatsObj["recvNack"] = recvNackArray;
-
-                        // Summary counters
-                        ccStatsObj["totalAcks"] = (int64_t)ndpFlowStats.acksReceived;
-                        ccStatsObj["totalNacks"] = (int64_t)ndpFlowStats.nacksReceived;
-                        ccStatsObj["totalPullsConsumed"] = (int64_t)ndpFlowStats.pullsConsumed;
-                        ccStatsObj["totalRtoFires"] = (int64_t)ndpFlowStats.rtoFires;
-                        ccStatsObj["totalRtoTrueLoss"] = (int64_t)ndpFlowStats.rtoTrueLoss;
-
-                        (*flowStatsObj)["ccStats"] = ccStatsObj;
                     }
 
+                    (*flowStatsObj)["ccStats"] = ccStatsObj;
                     ndpFlowCounter++;
+                };
+
+                // Main (non-CDF) flow
+                auto ndpStats = ndpApp->GetNdpFlowStats();
+                if (ndpStats->tFct > Time(0))
+                {
+                    emitNdpFlow(ndpStats, ndpApp->GetSocket(), "NDP");
+                }
+
+                // CDF completed flows
+                const auto& cdfStats = ndpApp->GetCdfCompletedStats();
+                for (const auto& cdfFlowStats : cdfStats)
+                {
+                    emitNdpFlow(cdfFlowStats, nullptr, "NDP-CDF");
                 }
             }
             continue;
@@ -856,17 +863,18 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
 
                                 if (!qs.detailedQlength && !vQLenBytes.empty())
                                 {
-                                    // Pad with zeros for empty intervals
                                     StringValue sv;
                                     Time recordInterval = Time(0);
                                     if (GlobalValue::GetValueByNameFailSafe(
                                             "qlengthRecordInterval", sv))
                                         recordInterval = Time(sv.Get());
-                                    if (recordInterval.IsStrictlyPositive())
+                                    if (recordInterval.IsStrictlyPositive() &&
+                                        finishTime > startTime)
                                     {
                                         uint32_t nPoints =
                                             (double)(finishTime - startTime).GetNanoSeconds() /
                                             (double)recordInterval.GetNanoSeconds();
+                                        nPoints = std::min(nPoints, (uint32_t)10000000);
                                         while (vQLenBytes.size() < nPoints)
                                             vQLenBytes.push_back(0);
                                     }
@@ -947,22 +955,24 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
                  {
                      vQLengthBytes.push_back(qLength.second);
                  }
-                 if (!qStats->bDetailedQlengthStats)
-                 {
-                     // Complement 0 queue length points according to (finishTime -
-                     // startTime) / qlengthRecordInterval
-                     StringValue sv;
-                     Time recordInterval = Time(0); // Must be set, otherwise fatal error before
-                     if (GlobalValue::GetValueByNameFailSafe("qlengthRecordInterval", sv))
-                         recordInterval = Time(sv.Get());
-                     uint32_t nPoints =
-                         ((double)finishTime.GetNanoSeconds() - (double)startTime.GetNanoSeconds()) /
-                         (double)recordInterval.GetNanoSeconds();
-                     while (vQLengthBytes.size() < nPoints)
-                     {
-                         vQLengthBytes.push_back(0);
-                     }
-                 }
+                if (!qStats->bDetailedQlengthStats)
+                {
+                    StringValue sv;
+                    Time recordInterval = Time(0);
+                    if (GlobalValue::GetValueByNameFailSafe("qlengthRecordInterval", sv))
+                        recordInterval = Time(sv.Get());
+                    if (recordInterval.IsStrictlyPositive() && finishTime > startTime)
+                    {
+                        uint32_t nPoints =
+                            ((double)finishTime.GetNanoSeconds() - (double)startTime.GetNanoSeconds()) /
+                            (double)recordInterval.GetNanoSeconds();
+                        nPoints = std::min(nPoints, (uint32_t)10000000);
+                        while (vQLengthBytes.size() < nPoints)
+                        {
+                            vQLengthBytes.push_back(0);
+                        }
+                    }
+                }
                  if (vQLengthBytes.size() != 0)
                  {
                      std::sort(vQLengthBytes.begin(), vQLengthBytes.end());

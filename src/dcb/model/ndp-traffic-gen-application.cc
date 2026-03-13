@@ -213,11 +213,17 @@
      return m_cdfFlowCount;
  }
 
- const std::vector<Ptr<NdpSocket>>&
- NdpTrafficGenApplication::GetCdfSockets() const
- {
-     return m_cdfSockets;
- }
+const std::vector<std::shared_ptr<NdpSocket::Stats>>&
+NdpTrafficGenApplication::GetCdfCompletedStats() const
+{
+    return m_cdfCompletedStats;
+}
+
+uint32_t
+NdpTrafficGenApplication::GetActiveCdfSocketCount() const
+{
+    return m_activeCdfSockets.size();
+}
 
  Time
  NdpTrafficGenApplication::GetFlowCompletionTime() const
@@ -265,15 +271,20 @@ NdpTrafficGenApplication::GetSocket() const
     return m_socket;
 }
 
-const NdpSocket::FlowStats&
+std::shared_ptr<NdpSocket::Stats>
 NdpTrafficGenApplication::GetNdpFlowStats() const
 {
-    static NdpSocket::FlowStats s_empty;
     if (m_socket != nullptr)
     {
-        return m_socket->GetFlowStats();
+        auto stats = m_socket->GetStats();
+        stats->tStart = m_startTime;
+        stats->tFinish = m_finishTime;
+        stats->nTotalSizePkts = static_cast<uint32_t>(m_packetsSent);
+        stats->nTotalSizeBytes = m_bytesSent;
+        stats->CollectAndCheck();
+        return stats;
     }
-    return s_empty;
+    return std::make_shared<NdpSocket::Stats>();
 }
 
 void
@@ -356,31 +367,42 @@ NdpTrafficGenApplication::StartApplication()
     }
 }
  
- void
- NdpTrafficGenApplication::StopApplication()
- {
-     NS_LOG_FUNCTION(this);
- 
-     if (m_sendEvent.IsRunning())
-     {
-         Simulator::Cancel(m_sendEvent);
-     }
- 
-     if (m_socket)
-     {
-         m_socket->Close();
-     }
- 
-     if (!m_finished && m_bytesSent > 0)
-     {
-         m_finishTime = Simulator::Now();
-         m_finished = true;
- 
-         Time fct = GetFlowCompletionTime();
-         NS_LOG_INFO("Flow stopped: sent " << m_bytesSent << " bytes in " << fct.GetMicroSeconds()
-                                           << " us (FCT)");
-     }
- }
+void
+NdpTrafficGenApplication::StopApplication()
+{
+    NS_LOG_FUNCTION(this);
+
+    if (m_sendEvent.IsRunning())
+    {
+        Simulator::Cancel(m_sendEvent);
+    }
+
+    if (m_socket)
+    {
+        m_socket->Close();
+    }
+
+    // Close any remaining active CDF sockets
+    for (auto& sock : m_activeCdfSockets)
+    {
+        auto stats = sock->GetStats();
+        stats->tFinish = Simulator::Now();
+        stats->CollectAndCheck();
+        m_cdfCompletedStats.push_back(stats);
+        sock->Close();
+    }
+    m_activeCdfSockets.clear();
+
+    if (!m_finished && m_bytesSent > 0)
+    {
+        m_finishTime = Simulator::Now();
+        m_finished = true;
+
+        Time fct = GetFlowCompletionTime();
+        NS_LOG_INFO("Flow stopped: sent " << m_bytesSent << " bytes in " << fct.GetMicroSeconds()
+                                          << " us (FCT)");
+    }
+}
  
 void
 NdpTrafficGenApplication::ConnectionSucceeded(Ptr<Socket> socket)
@@ -399,6 +421,7 @@ NdpTrafficGenApplication::ConnectionSucceeded(Ptr<Socket> socket)
          m_socket->SetFlowCompleteCallback(
              MakeCallback(&NdpTrafficGenApplication::HandleFlowComplete, this));
      }
+     // CDF mode: this callback fires on the listen socket, not on CDF sender sockets
  
      // Only start sending if enabled
      if (!m_sendEnabled)
@@ -660,20 +683,41 @@ NdpTrafficGenApplication::SendPacket()
  }
  
 void
-NdpTrafficGenApplication::HandleFlowComplete()
+NdpTrafficGenApplication::HandleFlowComplete(Ptr<NdpSocket> socket)
 {
-    NS_LOG_FUNCTION(this);
+    NS_LOG_FUNCTION(this << socket);
 
-    if (!m_finished)
+    if (socket == m_socket)
     {
-        m_finishTime = Simulator::Now();
-        m_finished = true;
+        // Main (non-CDF) flow completion
+        if (!m_finished)
+        {
+            m_finishTime = Simulator::Now();
+            m_finished = true;
 
-        Time fct = GetFlowCompletionTime();
-        NS_LOG_INFO("Flow fully complete (all-ACKed): " << m_bytesSent << " bytes, FCT="
-                    << fct.GetMicroSeconds() << " us (start="
-                    << m_startTime.GetMicroSeconds() << "us finish="
-                    << m_finishTime.GetMicroSeconds() << "us)");
+            Time fct = GetFlowCompletionTime();
+            NS_LOG_INFO("Flow fully complete (all-ACKed): " << m_bytesSent << " bytes, FCT="
+                        << fct.GetMicroSeconds() << " us (start="
+                        << m_startTime.GetMicroSeconds() << "us finish="
+                        << m_finishTime.GetMicroSeconds() << "us)");
+        }
+    }
+    else
+    {
+        // CDF flow completion — collect lightweight stats and release the socket
+        auto stats = socket->GetStats();
+        stats->tFinish = Simulator::Now();
+        stats->CollectAndCheck();
+        m_cdfCompletedStats.push_back(stats);
+
+        socket->Close();
+
+        // Remove from active tracking set
+        m_activeCdfSockets.erase(socket);
+
+        NS_LOG_DEBUG("CDF flow done on node " << m_nodeIndex
+                     << ", active=" << m_activeCdfSockets.size()
+                     << " completed=" << m_cdfCompletedStats.size());
     }
 }
 
@@ -716,9 +760,6 @@ NdpTrafficGenApplication::GenerateCdfTraffic()
     NS_ASSERT_MSG(m_topology, "Topology not set — call SetTopologyInfo() before starting CDF traffic");
     NS_ASSERT_MSG(m_avgFlowSize > 0, "Average flow size is 0 — CDF may be empty");
 
-    // ── Compute mean inter-arrival time (same formula as DcbTrafficGenApplication) ──
-    //   flowMeanInterval = avgFlowSize * 8 / (linkRate * load)    [in seconds]
-    //   converted to nanoseconds for ExponentialRandomVariable
     double flowMeanIntervalNs =
         static_cast<double>(m_avgFlowSize) * 8.0
         / (m_linkRate.GetBitRate() * m_trafficLoad) * 1e9;
@@ -734,41 +775,45 @@ NdpTrafficGenApplication::GenerateCdfTraffic()
                 << " window=[" << Simulator::Now().GetSeconds()
                 << "s," << m_cdfStopTime.GetSeconds() << "s)");
 
-    // ── Pre-schedule all CDF flows ──────────────────────────────────────────
+    // Pre-draw ALL RNG values now to preserve deterministic ordering
+    // (same trick as RoCEv2: avoid RNG pollution from interleaved events).
+    // But defer socket creation to the actual start time to avoid OOM.
+    uint32_t totalFlows = 0;
     for (Time t = Simulator::Now() + GetNextFlowArriveInterval();
          t < m_cdfStopTime;
          t += GetNextFlowArriveInterval())
     {
-        // Defer ScheduleNextCdfFlow to avoid RNG pollution (same trick as RoCEv2)
-        Simulator::Schedule(Time(0),
-                            &NdpTrafficGenApplication::ScheduleNextCdfFlow,
-                            this, t);
+        uint32_t destNode = GetRandomDestNode();
+        uint64_t flowSize = GetNextCdfFlowSize();
+
+        Simulator::Schedule(t - Simulator::Now(),
+                            &NdpTrafficGenApplication::LaunchCdfFlow,
+                            this, destNode, flowSize);
+        totalFlows++;
     }
+
+    NS_LOG_INFO("CDF traffic: node " << m_nodeIndex
+                << " pre-scheduled " << totalFlows << " flows"
+                << " (deferred socket creation)");
 }
 
 void
-NdpTrafficGenApplication::ScheduleNextCdfFlow(const Time& startTime)
+NdpTrafficGenApplication::LaunchCdfFlow(uint32_t destNode, uint64_t flowSize)
 {
-    NS_LOG_FUNCTION(this << startTime);
+    NS_LOG_FUNCTION(this << destNode << flowSize);
 
-    // 1. Pick random destination (≠ self)
-    uint32_t destNode = GetRandomDestNode();
-
-    // 2. Get destination node's primary IP
     Ptr<Node> destNodePtr = m_topology->GetNode(destNode).nodePtr;
     Ptr<Ipv4> destIpv4 = destNodePtr->GetObject<Ipv4>();
     NS_ASSERT_MSG(destIpv4 && destIpv4->GetNInterfaces() > 1,
                   "Dest node " << destNode << " has no valid IPv4");
     Ipv4Address destAddr = destIpv4->GetAddress(1, 0).GetLocal();
 
-    // 3. Create a new NdpSocket for this flow
     Ptr<NdpL4Protocol> ndpL4 = GetNode()->GetObject<NdpL4Protocol>();
     NS_ASSERT_MSG(ndpL4, "NdpL4Protocol not installed on node " << GetNode()->GetId());
 
     Ptr<NdpSocket> socket = CreateObject<NdpSocket>();
     socket->SetNdp(ndpL4);
 
-    // 4. Set multipath paths for destination
     std::vector<Ipv4Address> destPathIps =
         NdpMultipathHelper::GetInstance().GetPathIps(destNode);
     if (destPathIps.empty())
@@ -777,25 +822,28 @@ NdpTrafficGenApplication::ScheduleNextCdfFlow(const Time& startTime)
     }
     socket->SetPaths(destPathIps);
 
-    // 5. Bind & Connect
     socket->Bind();
     socket->Connect(InetSocketAddress(destAddr, 4000));
 
-    // 6. Draw flow size from CDF
-    uint64_t flowSize = GetNextCdfFlowSize();
+    // Set flow-complete callback for automatic cleanup
+    socket->SetFlowCompleteCallback(
+        MakeCallback(&NdpTrafficGenApplication::HandleFlowComplete, this));
 
-    // 7. Track this socket for stats collection
-    m_cdfSockets.push_back(socket);
+    // Initialise application-level stats before sending
+    auto stats = socket->GetStats();
+    stats->tStart = Simulator::Now();
+    stats->nTotalSizeBytes = flowSize;
+    stats->nTotalSizePkts = (flowSize + m_packetSize - 1) / m_packetSize;
+
+    m_activeCdfSockets.insert(socket);
     m_cdfFlowCount++;
 
     NS_LOG_DEBUG("CDF flow #" << m_cdfFlowCount << ": node " << m_nodeIndex
-                 << " → node " << destNode << " (" << destAddr
-                 << "), size=" << flowSize << "B at t=" << startTime.GetNanoSeconds() << "ns");
+                 << " -> node " << destNode << " (" << destAddr
+                 << "), size=" << flowSize << "B at t="
+                 << Simulator::Now().GetNanoSeconds() << "ns");
 
-    // 8. Schedule sending at the target time
-    Simulator::Schedule(startTime - Simulator::Now(),
-                        &NdpTrafficGenApplication::SendCdfFlow,
-                        this, socket, flowSize);
+    SendCdfFlow(socket, flowSize);
 }
 
 void
@@ -803,8 +851,11 @@ NdpTrafficGenApplication::SendCdfFlow(Ptr<NdpSocket> socket, uint64_t flowSize)
 {
     NS_LOG_FUNCTION(this << socket << flowSize);
 
+    const uint32_t MAX_BATCH = 200;
     uint64_t sent = 0;
-    while (sent < flowSize)
+    uint32_t batch = 0;
+
+    while (sent < flowSize && batch < MAX_BATCH)
     {
         uint32_t toSend = std::min(static_cast<uint64_t>(m_packetSize), flowSize - sent);
         Ptr<Packet> packet = Create<Packet>(toSend);
@@ -813,10 +864,12 @@ NdpTrafficGenApplication::SendCdfFlow(Ptr<NdpSocket> socket, uint64_t flowSize)
         if (ret > 0)
         {
             sent += toSend;
+            batch++;
         }
         else if (ret == 0)
         {
-            // Socket buffer full — retry in 1µs
+            if (sent < flowSize)
+                socket->SetMoreDataPending(true);
             Simulator::Schedule(MicroSeconds(1),
                                 &NdpTrafficGenApplication::SendCdfFlow,
                                 this, socket, flowSize - sent);
@@ -828,7 +881,20 @@ NdpTrafficGenApplication::SendCdfFlow(Ptr<NdpSocket> socket, uint64_t flowSize)
             return;
         }
     }
-    NS_LOG_DEBUG("CDF flow submitted " << sent << " bytes on node " << GetNode()->GetId());
+
+    if (sent < flowSize)
+    {
+        socket->SetMoreDataPending(true);
+        Simulator::Schedule(MicroSeconds(1),
+                            &NdpTrafficGenApplication::SendCdfFlow,
+                            this, socket, flowSize - sent);
+    }
+    else
+    {
+        socket->SetMoreDataPending(false);
+        NS_LOG_DEBUG("CDF flow submitted all " << flowSize << " bytes on node "
+                     << GetNode()->GetId());
+    }
 }
 
 uint32_t

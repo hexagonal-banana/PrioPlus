@@ -109,6 +109,74 @@ void PrintNdpSocketStats()
     return tid;
  }
  
+// ── NdpSocket::Stats implementation ──────────────────────────────────────────
+
+NdpSocket::Stats::Stats()
+    : tStart(Time(0)),
+      tFinish(Time(0)),
+      tFct(Time(0)),
+      overallFlowRate(DataRate(0))
+{
+    BooleanValue bv;
+    if (GlobalValue::GetValueByNameFailSafe("detailedSenderStats", bv))
+        bDetailedSenderStats = bv.Get();
+    if (GlobalValue::GetValueByNameFailSafe("detailedRetxStats", bv))
+        bDetailedRetxStats = bv.Get();
+}
+
+void
+NdpSocket::Stats::RecordSentPkt(uint32_t size)
+{
+    nTotalSentPkts++;
+    nTotalSentBytes += size;
+    if (bDetailedSenderStats)
+    {
+        vSentPkt.emplace_back(Simulator::Now(), size);
+    }
+}
+
+void
+NdpSocket::Stats::RecordRecvAck(uint32_t seq)
+{
+    acksReceived++;
+    if (bDetailedRetxStats)
+    {
+        vRecvAck.emplace_back(Simulator::Now(), seq);
+    }
+}
+
+void
+NdpSocket::Stats::RecordRecvNack(uint32_t seq)
+{
+    nacksReceived++;
+    if (bDetailedRetxStats)
+    {
+        vRecvNack.emplace_back(Simulator::Now(), seq);
+    }
+}
+
+void
+NdpSocket::Stats::CollectAndCheck()
+{
+    if (tStart.IsStrictlyPositive() && tFinish.IsStrictlyPositive())
+    {
+        tFct = tFinish - tStart;
+        if (tFct.GetSeconds() > 0)
+        {
+            overallFlowRate = DataRate(nTotalSizeBytes * 8.0 / tFct.GetSeconds());
+        }
+    }
+}
+
+std::shared_ptr<NdpSocket::Stats>
+NdpSocket::GetStats() const
+{
+    m_stats->CollectAndCheck();
+    return m_stats;
+}
+
+// ── NdpSocket ────────────────────────────────────────────────────────────────
+
 NdpSocket::NdpSocket()
     : m_state(CLOSED),
       m_connectionId(0),
@@ -125,19 +193,11 @@ NdpSocket::NdpSocket()
       m_pullSeq(0),
       m_pathIndex(0),
       m_pathProbeInterval(Seconds(1.0)),
-      m_errno(ERROR_NOTERROR)
+      m_errno(ERROR_NOTERROR),
+      m_stats(std::make_shared<Stats>())
 {
     NS_LOG_FUNCTION(this);
-    // RTO jitter RNG: uniform [0, 1] → used to produce ±25% RTO jitter
-    // This desynchronizes RTO timers across flows to avoid synchronized bursts.
     m_rtoJitter = CreateObject<UniformRandomVariable>();
-
-    // Check global config for detailed stats
-    BooleanValue bv;
-    if (GlobalValue::GetValueByNameFailSafe("detailedSenderStats", bv))
-    {
-        m_flowStats.detailedStats = bv.Get();
-    }
 }
  
 NdpSocket::~NdpSocket()
@@ -146,7 +206,7 @@ NdpSocket::~NdpSocket()
 }
 
 void
-NdpSocket::SetFlowCompleteCallback(Callback<void> cb)
+NdpSocket::SetFlowCompleteCallback(Callback<void, Ptr<NdpSocket>> cb)
 {
     NS_LOG_FUNCTION(this);
     m_flowCompleteCallback = cb;
@@ -851,13 +911,8 @@ NdpSocket::SendDataPacket(uint32_t seq, bool isRetransmit, uint8_t avoidPath)
     payload->AddHeader(header);
     
     // ── Global stats ──────────────────────────────────────────────────────────
-    if (isRetransmit) { g_sock_retx++; m_flowStats.retxCount++; } else { g_sock_sent++; }
-
-    // Per-flow sentPkt tracking
-    if (m_flowStats.detailedStats)
-    {
-        m_flowStats.vSentPkt.emplace_back(now, payload->GetSize());
-    }
+    if (isRetransmit) { g_sock_retx++; m_stats->nRetxCount++; } else { g_sock_sent++; }
+    m_stats->RecordSentPkt(payload->GetSize());
 
     // 🔍 DEBUG: Track retransmissions
     if (isRetransmit)
@@ -928,13 +983,7 @@ NdpSocket::SendDataPacket(uint32_t seq, bool isRetransmit, uint8_t avoidPath)
      
      // ── Global stats ──────────────────────────────────────────────────────────
     g_sock_acked++;
-    m_flowStats.acksReceived++;
-
-    // Per-flow ACK tracking
-    if (m_flowStats.detailedStats)
-    {
-        m_flowStats.vRecvAck.emplace_back(now, seq);
-    }
+    m_stats->RecordRecvAck(seq);
 
     // 🔍 DEBUG: ACK received (packet successfully delivered)
      static std::map<uint32_t, uint64_t> ackCount;  // nodeId -> count
@@ -968,22 +1017,18 @@ NdpSocket::SendDataPacket(uint32_t seq, bool isRetransmit, uint8_t avoidPath)
      // ── Flow completion detection ──────────────────────────────────────────
      // A flow is done when all data has been queued (nextSeq == lastSeq) AND
      // the Outstanding Table is empty (every sent packet has been ACK'd).
-     if (m_txBuffer.empty() && m_nextSeq >= m_lastSeq && m_lastSeq > 0)
+     if (m_txBuffer.empty() && m_nextSeq >= m_lastSeq && m_lastSeq > 0
+         && !m_flowCompleted && !m_moreDataPending)
      {
-         static std::set<uint64_t> s_reportedConnIds;
-         if (s_reportedConnIds.find(m_connectionId) == s_reportedConnIds.end())
-         {
-             s_reportedConnIds.insert(m_connectionId);
-             g_sock_flows_done++;
-             NS_LOG_INFO("Flow completed (all-ACKed): connId=" << m_connectionId
-                         << " totalPkts=" << (m_lastSeq - m_firstSeq)
-                         << " @" << Simulator::Now().GetSeconds() << "s");
+         m_flowCompleted = true;
+         g_sock_flows_done++;
+         NS_LOG_INFO("Flow completed (all-ACKed): connId=" << m_connectionId
+                     << " totalPkts=" << (m_lastSeq - m_firstSeq)
+                     << " @" << Simulator::Now().GetSeconds() << "s");
 
-             // Notify the application that the flow is truly complete
-             if (!m_flowCompleteCallback.IsNull())
-             {
-                 m_flowCompleteCallback();
-             }
+         if (!m_flowCompleteCallback.IsNull())
+         {
+             m_flowCompleteCallback(Ptr<NdpSocket>(this));
          }
      }
 
@@ -1012,13 +1057,7 @@ NdpSocket::ProcessNack(const NdpHeader& header)
 
     // ── Global stats ──────────────────────────────────────────────────────────
     g_sock_nack_rx++;
-    m_flowStats.nacksReceived++;
-
-    // Per-flow NACK tracking
-    if (m_flowStats.detailedStats)
-    {
-        m_flowStats.vRecvNack.emplace_back(now, seq);
-    }
+    m_stats->RecordRecvNack(seq);
 
     // ✅ SPEC: NACK表示包被Trim，放入RTX buffer等待PULL，不立即重传
     // Duplicate check: avoid adding same seq multiple times
@@ -1148,7 +1187,7 @@ NdpSocket::ProcessPull(const NdpHeader& header)
             uint8_t avoidPath = it->second.pathId;
             rtxSent++;
             g_sock_pull_credits++;
-            m_flowStats.pullsConsumed++;
+            m_stats->pullsConsumed++;
             SendDataPacket(rtxSeq, true, avoidPath);
         }
         else if (m_nextSeq < m_lastSeq)
@@ -1156,7 +1195,7 @@ NdpSocket::ProcessPull(const NdpHeader& header)
             // Send new data
             newDataSent++;
             g_sock_pull_credits++;
-            m_flowStats.pullsConsumed++;
+            m_stats->pullsConsumed++;
             SendDataPacket(m_nextSeq, false);
             m_nextSeq++;
         }
@@ -1580,7 +1619,7 @@ NdpSocket::RtoExpired(uint32_t seq)
         // re-arm with a LONGER interval (10ms) so this fires at most ~90 times
         // per flow over a 0.9s simulation.
         g_sock_rto_watchdog++;
-        m_flowStats.rtoFires++;
+        m_stats->rtoFires++;
         auto txItA = m_txBuffer.find(seq);
         if (txItA != m_txBuffer.end())
         {
@@ -1625,8 +1664,8 @@ NdpSocket::RtoExpired(uint32_t seq)
     static constexpr uint32_t MAX_RTO_RETRIES = 16; // 16 × 1ms = 16ms last-resort window
     uint32_t retries = ++txIt->second.rtoRetryCount;
     g_sock_rto_trueloss++;
-    m_flowStats.rtoFires++;
-    m_flowStats.rtoTrueLoss++;
+    m_stats->rtoFires++;
+    m_stats->rtoTrueLoss++;
     if (retries > MAX_RTO_RETRIES)
     {
         g_sock_rto_gaveup++;

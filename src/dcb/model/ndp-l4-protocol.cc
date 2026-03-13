@@ -83,44 +83,42 @@ extern uint64_t g_nic_ndp_rx;    ///< NDP pkts received at any NIC (from dcb-net
 extern uint64_t g_nic_ndp_tx;    ///< NDP pkts transmitted at any NIC (from dcb-net-device.cc)
 extern uint64_t g_nic_ndp_drop;  ///< NDP pkts dropped at DcbNetDevice m_queue (from dcb-net-device.cc)
 
+// ── NDP SIMULATION CORRECTNESS REPORT (temporarily disabled) ─────────────────
 // Forward declarations for stats-print functions defined in other .cc files.
-// (Functions have external linkage by default in C++.)
-void PrintNdpSwitchStats();
-void PrintNdpSocketStats();
-void PrintNdpHostQueueStats();
-void PrintSwitchNodeStats();
-void PrintLinkUtilizationStats();
-
-/// Called once at simulation destroy time to print a consolidated stats report.
-static void
-PrintNdpAllStats()
-{
-    std::cout << "\n"
-              << "══════════════════════════════════════════════════════\n"
-              << "  NDP SIMULATION CORRECTNESS REPORT\n"
-              << "══════════════════════════════════════════════════════\n";
-    PrintNdpHostQueueStats();
-    PrintNdpSwitchStats();
-    PrintSwitchNodeStats();
-    // Print pull pipeline stats before socket stats
-    std::cout << "╔══════════════════════════════════════════════════╗\n"
-              << "║          NDP Pull Pipeline Statistics            ║\n"
-              << "╠══════════════════════════════════════════════════╣\n"
-              << "║  L4 Send() total calls          : " << std::setw(8) << g_send_calls     << "              ║\n"
-              << "║  L4 Send() no route (dropped)   : " << std::setw(8) << g_send_no_route  << "              ║\n"
-              << "║  EnqueuePull() calls (rx side)  : " << std::setw(8) << g_pull_enqueued  << "              ║\n"
-              << "║  SendOnePull() calls (tx pkts)  : " << std::setw(8) << g_pull_sent      << "              ║\n"
-              << "║  NDP pkts sent by any NIC (tx)  : " << std::setw(8) << g_nic_ndp_tx     << "              ║\n"
-              << "║  NDP pkts arriving at any NIC   : " << std::setw(8) << g_nic_ndp_rx     << "              ║\n"
-              << "║  (Note: L4 sends=" << std::setw(6) << g_send_calls << " NIC tx=" << std::setw(6) << g_nic_ndp_tx << " diff=" << static_cast<int64_t>(g_send_calls) - static_cast<int64_t>(g_nic_ndp_tx) << ") ║\n"
-              << "║  PULL pkts arriving at Receive(): " << std::setw(8) << g_pull_rx_total  << "              ║\n"
-              << "║  PULL pkts with no socket found : " << std::setw(8) << g_pull_rx_nosock << "              ║\n"
-              << "║  NIC m_queue drops (DcbNetDev)  : " << std::setw(8) << g_nic_ndp_drop   << "              ║\n"
-              << "╚══════════════════════════════════════════════════╝\n";
-    PrintNdpSocketStats();
-    PrintLinkUtilizationStats();
-    std::cout << "══════════════════════════════════════════════════════\n\n";
-}
+// void PrintNdpSwitchStats();
+// void PrintNdpSocketStats();
+// void PrintNdpHostQueueStats();
+// void PrintSwitchNodeStats();
+// void PrintLinkUtilizationStats();
+//
+// static void
+// PrintNdpAllStats()
+// {
+//     std::cout << "\n"
+//               << "══════════════════════════════════════════════════════\n"
+//               << "  NDP SIMULATION CORRECTNESS REPORT\n"
+//               << "══════════════════════════════════════════════════════\n";
+//     PrintNdpHostQueueStats();
+//     PrintNdpSwitchStats();
+//     PrintSwitchNodeStats();
+//     std::cout << "╔══════════════════════════════════════════════════╗\n"
+//               << "║          NDP Pull Pipeline Statistics            ║\n"
+//               << "╠══════════════════════════════════════════════════╣\n"
+//               << "║  L4 Send() total calls          : " << std::setw(8) << g_send_calls     << "              ║\n"
+//               << "║  L4 Send() no route (dropped)   : " << std::setw(8) << g_send_no_route  << "              ║\n"
+//               << "║  EnqueuePull() calls (rx side)  : " << std::setw(8) << g_pull_enqueued  << "              ║\n"
+//               << "║  SendOnePull() calls (tx pkts)  : " << std::setw(8) << g_pull_sent      << "              ║\n"
+//               << "║  NDP pkts sent by any NIC (tx)  : " << std::setw(8) << g_nic_ndp_tx     << "              ║\n"
+//               << "║  NDP pkts arriving at any NIC   : " << std::setw(8) << g_nic_ndp_rx     << "              ║\n"
+//               << "║  (Note: L4 sends=" << std::setw(6) << g_send_calls << " NIC tx=" << std::setw(6) << g_nic_ndp_tx << " diff=" << static_cast<int64_t>(g_send_calls) - static_cast<int64_t>(g_nic_ndp_tx) << ") ║\n"
+//               << "║  PULL pkts arriving at Receive(): " << std::setw(8) << g_pull_rx_total  << "              ║\n"
+//               << "║  PULL pkts with no socket found : " << std::setw(8) << g_pull_rx_nosock << "              ║\n"
+//               << "║  NIC m_queue drops (DcbNetDev)  : " << std::setw(8) << g_nic_ndp_drop   << "              ║\n"
+//               << "╚══════════════════════════════════════════════════╝\n";
+//     PrintNdpSocketStats();
+//     PrintLinkUtilizationStats();
+//     std::cout << "══════════════════════════════════════════════════════\n\n";
+// }
 
 NdpL4Protocol::NdpL4Protocol()
     : m_nextPort(49152), // Start of dynamic port range
@@ -129,15 +127,13 @@ NdpL4Protocol::NdpL4Protocol()
 {
     NS_LOG_FUNCTION(this);
 
-    // Schedule stats summary to print at simulation end.
-    // Use a once-only flag so that only the first NdpL4Protocol instance
-    // registers the callback (there is one per host, ~1000 in fig3c).
-    static bool s_statsScheduled = false;
-    if (!s_statsScheduled)
-    {
-        s_statsScheduled = true;
-        Simulator::ScheduleDestroy(&PrintNdpAllStats);
-    }
+    // NDP SIMULATION CORRECTNESS REPORT (temporarily disabled)
+    // static bool s_statsScheduled = false;
+    // if (!s_statsScheduled)
+    // {
+    //     s_statsScheduled = true;
+    //     Simulator::ScheduleDestroy(&PrintNdpAllStats);
+    // }
 }
  
 NdpL4Protocol::~NdpL4Protocol()
@@ -234,12 +230,8 @@ NdpL4Protocol::Receive(Ptr<Packet> packet,
         return IpL4Protocol::RX_ENDPOINT_UNREACH;
     }
     
-    // CRITICAL FIX: Peek NDP header without removing it (ForwardUp will remove it)
-    // This allows us to extract port information for socket routing
     NdpHeader ndpHeader;
-    Ptr<Packet> copy = packet->Copy();
-    uint32_t bytesRead = copy->RemoveHeader(ndpHeader);  // ← CRITICAL: Must read header!
-    (void)bytesRead;  // Suppress unused variable warning
+    packet->PeekHeader(ndpHeader);
     
     // Extract port information from connection ID.
     // ✅ New encoding (after Bug-1 fix): (srcIP << 32) | (srcPort << 16) | dstPort

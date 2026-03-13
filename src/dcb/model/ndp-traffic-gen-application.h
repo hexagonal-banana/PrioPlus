@@ -22,8 +22,10 @@
  #include "ns3/random-variable-stream.h"
  #include "ns3/traced-callback.h"
  
- #include <vector>
- #include <utility>
+#include <memory>
+#include <set>
+#include <vector>
+#include <utility>
  
  namespace ns3
  {
@@ -159,9 +161,14 @@
      uint32_t GetCdfFlowCount() const;
 
      /**
-      * \brief Get all CDF flow sockets (for stats collection)
+      * \brief Get all completed CDF flow stats
       */
-     const std::vector<Ptr<NdpSocket>>& GetCdfSockets() const;
+     const std::vector<std::shared_ptr<NdpSocket::Stats>>& GetCdfCompletedStats() const;
+
+     /**
+      * \brief Get number of currently active CDF sockets
+      */
+     uint32_t GetActiveCdfSocketCount() const;
  
      /**
       * \brief Get flow completion time
@@ -206,10 +213,10 @@
     Ptr<NdpSocket> GetSocket() const;
 
     /**
-     * \brief Get per-flow stats (convenience wrapper around socket->GetFlowStats())
-     * \return const reference to FlowStats, or default if socket is null
+     * \brief Get per-flow stats (convenience wrapper, mirrors RoCEv2 pattern)
+     * \return shared_ptr to Stats, or empty Stats if socket is null
      */
-    const NdpSocket::FlowStats& GetNdpFlowStats() const;
+    std::shared_ptr<NdpSocket::Stats> GetNdpFlowStats() const;
 
   protected:
      virtual void StartApplication() override;
@@ -251,7 +258,7 @@
       * that txBuffer is empty and all sequence numbers have been sent and
       * acknowledged.  This is the true end-to-end flow completion event.
       */
-     void HandleFlowComplete();
+     void HandleFlowComplete(Ptr<NdpSocket> socket);
 
      /**
       * \brief Handle connection succeeded
@@ -273,10 +280,11 @@
      void GenerateCdfTraffic();
 
      /**
-      * \brief Schedule one CDF flow at the given time
-      * \param startTime Simulation time to start the flow
+      * \brief Create socket and send one CDF flow (called at actual start time)
+      * \param destNode Destination node index (pre-drawn RNG)
+      * \param flowSize Flow size in bytes (pre-drawn RNG)
       */
-     void ScheduleNextCdfFlow(const Time& startTime);
+     void LaunchCdfFlow(uint32_t destNode, uint64_t flowSize);
 
      /**
       * \brief Send all data for a CDF flow
@@ -336,7 +344,8 @@
      uint32_t m_nodeIndex;                              ///< This host's index in topology
      Time m_cdfStopTime;                                ///< Stop generating CDF flows
      uint32_t m_cdfFlowCount;                           ///< Count of CDF flows generated
-     std::vector<Ptr<NdpSocket>> m_cdfSockets;          ///< All CDF flow sockets (for stats)
+     std::set<Ptr<NdpSocket>> m_activeCdfSockets;       ///< Currently active CDF sockets
+     std::vector<std::shared_ptr<NdpSocket::Stats>> m_cdfCompletedStats; ///< Stats from completed CDF flows
      Ptr<NdpSocket> m_listenSocket;                     ///< Separate listen socket for CDF mode
  
      // Traced callbacks

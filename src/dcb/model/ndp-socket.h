@@ -215,7 +215,16 @@ struct NdpTxItem
      *
      * \param cb  callback to invoke (no arguments)
      */
-    void SetFlowCompleteCallback(Callback<void> cb);
+    void SetFlowCompleteCallback(Callback<void, Ptr<NdpSocket>> cb);
+
+    /**
+     * \brief Mark that the application has more data to submit later.
+     *
+     * While true, flow-completion detection in ProcessAck() is suppressed.
+     * The application must call SetMoreDataPending(false) after the last
+     * batch of Send() calls so that completion can fire normally.
+     */
+    void SetMoreDataPending(bool pending) { m_moreDataPending = pending; }
 
     /**
      * \brief Schedule RTO timer for a sent packet (1ms timeout per NDP spec)
@@ -371,39 +380,61 @@ struct NdpTxItem
     // Callbacks
      TracedCallback<Ptr<const Packet>> m_txTrace; //发送数据包时触发的追踪回调
      TracedCallback<Ptr<const Packet>> m_rxTrace; //接收数据包时触发的追踪回调
-     Callback<void> m_flowCompleteCallback;       ///< fired once when all pkts ACK'd
+     Callback<void, Ptr<NdpSocket>> m_flowCompleteCallback;  ///< fired once when all pkts ACK'd
+     bool m_flowCompleted{false};              ///< guard: prevent duplicate completion
+     bool m_moreDataPending{false};            ///< suppress completion until all app data submitted
      
      // Socket errno
      enum SocketErrno m_errno;
 
   public:
-    // ── Per-flow statistics (for JSON output, mirrors RoCEv2 format) ────────
-    struct FlowStats
+    // ── Per-flow statistics (mirrors RoCEv2Socket::Stats pattern) ────────
+    class Stats
     {
-        uint32_t retxCount{0};                 ///< Retransmission count
-        uint32_t acksReceived{0};              ///< ACKs received
-        uint32_t nacksReceived{0};             ///< NACKs received (trim notifications)
-        uint32_t pullsConsumed{0};             ///< PULL credits consumed
-        uint32_t rtoFires{0};                  ///< Total RTO fires (watchdog + true-loss)
-        uint32_t rtoTrueLoss{0};               ///< RTO true-loss fires
+      public:
+        Stats();
 
-        /// sentPkt: per-packet {timeNs, sizeByte}
-        std::vector<std::pair<Time, uint32_t>> vSentPkt;
+        // ── Summary counters (always available, lightweight) ────────────
+        uint32_t nTotalSizePkts{0};        ///< Original packets queued by app
+        uint64_t nTotalSizeBytes{0};       ///< Original bytes queued by app
+        uint32_t nTotalSentPkts{0};        ///< All pkts sent (first tx + retx)
+        uint64_t nTotalSentBytes{0};       ///< All bytes sent (first tx + retx)
+        uint32_t nRetxCount{0};            ///< Retransmission count
+        uint32_t acksReceived{0};          ///< ACKs received
+        uint32_t nacksReceived{0};         ///< NACKs received (trim notifications)
+        uint32_t pullsConsumed{0};         ///< PULL credits consumed
+        uint32_t rtoFires{0};              ///< Total RTO fires (watchdog + true-loss)
+        uint32_t rtoTrueLoss{0};           ///< RTO true-loss fires
 
-        /// recvAck: per-ACK {timeNs, seq}
-        std::vector<std::pair<Time, uint32_t>> vRecvAck;
+        Time tStart;                       ///< Flow start time
+        Time tFinish;                      ///< Flow finish time
+        Time tFct;                         ///< Flow completion time
+        DataRate overallFlowRate;           ///< Overall flow rate (totalSizeBytes / FCT)
 
-        /// recvNack: per-NACK {timeNs, seq}
-        std::vector<std::pair<Time, uint32_t>> vRecvNack;
+        std::string flowTag;               ///< Flow tag for identification
 
-        bool detailedStats{false};             ///< Whether detailed stats are enabled
+        // ── Detailed sender stats (only when bDetailedSenderStats=true) ──
+        bool bDetailedSenderStats{false};
+        std::vector<std::pair<Time, uint32_t>> vSentPkt;  ///< {time, sizeByte}
+
+        // ── Detailed retx stats (only when bDetailedRetxStats=true) ──
+        bool bDetailedRetxStats{false};
+        std::vector<std::pair<Time, uint32_t>> vRecvAck;   ///< {time, seq}
+        std::vector<std::pair<Time, uint32_t>> vRecvNack;  ///< {time, seq}
+
+        // ── Record helpers (check flags internally) ────────────────────
+        void RecordSentPkt(uint32_t size);
+        void RecordRecvAck(uint32_t seq);
+        void RecordRecvNack(uint32_t seq);
+
+        void CollectAndCheck();
     };
 
-    /** Get per-flow statistics. */
-    const FlowStats& GetFlowStats() const { return m_flowStats; }
+    /** Get per-flow statistics (shared_ptr, mirrors RoCEv2Socket::GetStats()). */
+    std::shared_ptr<Stats> GetStats() const;
 
   private:
-    FlowStats m_flowStats;  ///< Per-flow statistics
+    std::shared_ptr<Stats> m_stats;  ///< Per-flow statistics
 };
  
  } // namespace ns3

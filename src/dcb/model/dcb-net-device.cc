@@ -394,23 +394,6 @@ void PrintLinkUtilizationStats()
  {
      NS_LOG_FUNCTION(this << packet);
 
-     // Quickly peek EtherType to count NDP packets (protocol 253 = 0xFD over IPv4 = 0x0800)
-     // We only need to track arrival, not full decoding
-     {
-         EthernetHeader ethHdr;
-         Ptr<Packet> tmp = packet->Copy();
-         if (tmp->PeekHeader(ethHdr) > 0 && ethHdr.GetLengthType() == 0x0800)
-         {
-             // IPv4 packet - peek the IP header protocol field
-             tmp->RemoveHeader(ethHdr);
-             Ipv4Header ipHdr;
-             if (tmp->PeekHeader(ipHdr) > 0 && ipHdr.GetProtocol() == 253)
-             {
-                 g_nic_ndp_rx++;
-             }
-         }
-     }
-
      if (m_receiveErrorModel && m_receiveErrorModel->IsCorrupt(packet))
      {
          //
@@ -478,19 +461,6 @@ void PrintLinkUtilizationStats()
      //
      if (m_queue->Enqueue(packet))
      {
-         // Count NDP transmissions only when successfully enqueued (will actually be sent)
-         if (protocolNumber == 0x0800)
-         {
-             // peek inside the ethernet frame for IPv4 protocol field
-             Ptr<Packet> pktCopy = packet->Copy();
-             EthernetHeader ethHdr;
-             pktCopy->RemoveHeader(ethHdr);
-             Ipv4Header ipHdr;
-             if (pktCopy->PeekHeader(ipHdr) > 0 && ipHdr.GetProtocol() == 253)
-             {
-                 g_nic_ndp_tx++;
-             }
-         }
          //
          // If the channel is ready for transition we send the packet right now
          //
@@ -504,18 +474,6 @@ void PrintLinkUtilizationStats()
          return true;
      }
  
-     // Enqueue may fail (overflow): count NDP drops here
-     {
-         EthernetHeader ethHdr;
-         Ptr<Packet> pktCopy2 = packet->Copy();
-         pktCopy2->RemoveHeader(ethHdr);
-         Ipv4Header ipHdr2;
-         if (pktCopy2->PeekHeader(ipHdr2) > 0 && ipHdr2.GetProtocol() == 253)
-         {
-             g_nic_ndp_drop++;
-         }
-     }
-
      m_macTxDropTrace(packet);
      return false;
  }

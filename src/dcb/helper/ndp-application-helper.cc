@@ -178,10 +178,13 @@ NdpApplicationHelper::InstallNdpApplications(const boost::json::object& appConfi
         // Create application
         Ptr<NdpTrafficGenApplication> app = m_appFactory.Create<NdpTrafficGenApplication>();
         app->SetStartTime(startTime);
-        if (stopTime.GetSeconds() > 0)
+        if (stopTime.GetSeconds() > 0 && !isCdfMode)
         {
             app->SetStopTime(stopTime);
         }
+        // CDF mode: do NOT set app stop time to the CDF generation window end.
+        // The app must stay alive so in-flight flows can complete naturally.
+        // ns-3 will stop the app when Simulator::Stop() fires.
 
         // Set the socket for the application
         app->SetSocket(socket);
@@ -468,10 +471,18 @@ NdpApplicationHelper::ConstructCdfFromFile(const std::string& filename)
     }
     file.close();
 
-    // Normalise: ensure last entry is exactly 1.0
-    if (!cdf->empty() && cdf->back().second < 1.0)
+    // Normalize: divide all probabilities by the maximum so the last entry is 1.0
+    // (CDF files may use percentage format 0–100 instead of probability 0–1)
+    if (!cdf->empty())
     {
-        cdf->back().second = 1.0;
+        double maxProb = cdf->back().second;
+        if (maxProb > 0 && maxProb != 1.0)
+        {
+            for (auto& [s, p] : *cdf)
+            {
+                p /= maxProb;
+            }
+        }
     }
     NS_LOG_INFO("Read CDF from " << filename << ": " << cdf->size() << " entries");
     return cdf;

@@ -181,13 +181,9 @@ void PrintNdpSwitchStats()
   bool
   NdpSwitchQueue::IsControlPacket(Ptr<QueueDiscItem> item) const
   {
-      Ptr<Packet> packet = item->GetPacket()->Copy();
-      
-      // Check for NDP header
       NdpHeader ndpHeader;
-      if (packet->PeekHeader(ndpHeader))
+      if (item->GetPacket()->PeekHeader(ndpHeader))
       {
-          // Control packets: ACK, NACK, PULL, or TRIM
           return ndpHeader.IsAck() || ndpHeader.IsNack() || ndpHeader.IsPull() ||
                  ndpHeader.IsTrim();
       }
@@ -242,9 +238,6 @@ NdpSwitchQueue::ReturnToSender(Ptr<QueueDiscItem> item)
 {
     NS_LOG_FUNCTION(this << item);
     
-    uint32_t nodeId = Simulator::GetContext();
-    Time now = Simulator::Now();
-    
     // Cast to Ipv4QueueDiscItem
     Ptr<Ipv4QueueDiscItem> ipv4Item = DynamicCast<Ipv4QueueDiscItem>(item);
     if (!ipv4Item)
@@ -258,16 +251,12 @@ NdpSwitchQueue::ReturnToSender(Ptr<QueueDiscItem> item)
     Ipv4Address srcAddr = ipHeader.GetSource();
     Ipv4Address dstAddr = ipHeader.GetDestination();
     
-    // Extract NDP header to get sequence number
+    // Extract NDP header to get sequence number and connection ID
     Ptr<Packet> tempPacket = item->GetPacket()->Copy();
     NdpHeader ndpHeader;
-    uint32_t seq = 0;
-    uint64_t connId = 0;
     if (tempPacket->GetSize() >= ndpHeader.GetSerializedSize())
     {
         tempPacket->RemoveHeader(ndpHeader);
-        seq = ndpHeader.GetSequence();
-        connId = ndpHeader.GetConnectionId();
     }
     
     // ✅ Build RTS packet:
@@ -352,31 +341,6 @@ NdpSwitchQueue::DoEnqueue(Ptr<QueueDiscItem> item)
     // Check if this is a control packet
     bool isControl = IsControlPacket(item);
     
-    uint32_t nodeId = Simulator::GetContext();
-    
-    // 🔬 DETAILED DEBUG: Monitor Node 1 specifically (first sender)
-    if (nodeId == 1)
-    {
-        static uint64_t node1EnqueueCount = 0;
-        node1EnqueueCount++;
-        // std::cout << "📦 Node1 Enqueue#" << node1EnqueueCount 
-        //           << " LowQ: " << m_lowQueue.size() << "→" << (isControl ? m_lowQueue.size() : m_lowQueue.size() + 1)
-        //           << "/" << m_lowQueueMaxPackets
-        //           << " isCtrl=" << (isControl ? "Y" : "N")
-        //           << " @" << Simulator::Now().GetMicroSeconds() << "us"
-        //           << std::endl;
-    }
-    
-    // 🔥 PEAK DETECTOR: Track maximum queue sizes across ALL nodes
-    static uint32_t maxLowQueueSizeGlobal = 0;
-    if (!isControl && m_lowQueue.size() > maxLowQueueSizeGlobal)
-    {
-        maxLowQueueSizeGlobal = m_lowQueue.size();
-        NS_LOG_INFO("New peak LowQueue size: " << maxLowQueueSizeGlobal 
-                    << "/" << m_lowQueueMaxPackets);
-    }
-
-    
     // ── Global event counters ─────────────────────────────────────────────────
     if (isControl) { g_sw_ctrl_in++; } else { g_sw_data_in++; }
 
@@ -386,6 +350,7 @@ NdpSwitchQueue::DoEnqueue(Ptr<QueueDiscItem> item)
         if (m_highQueue.size() < m_highQueueMaxPackets)
         {
             m_highQueue.push_back(item);
+            m_highQueueStats.currentBytes += item->GetSize();
             PacketEnqueued(item);
             m_ndpTraceEnqueue(item);
             RecordHighQueueLength();
@@ -410,6 +375,7 @@ NdpSwitchQueue::DoEnqueue(Ptr<QueueDiscItem> item)
         if (m_lowQueue.size() < m_lowQueueMaxPackets)
         {
             m_lowQueue.push_back(item);
+            m_lowQueueStats.currentBytes += item->GetSize();
             PacketEnqueued(item);
             m_ndpTraceEnqueue(item);
             RecordLowQueueLength();
@@ -442,6 +408,7 @@ NdpSwitchQueue::DoEnqueue(Ptr<QueueDiscItem> item)
                 if (m_highQueue.size() < m_highQueueMaxPackets)
                 {
                     m_highQueue.push_back(trimmedItem);
+                    m_highQueueStats.currentBytes += trimmedItem->GetSize();
                     PacketEnqueued(trimmedItem);
                     m_ndpTraceEnqueue(trimmedItem);
                     
@@ -494,6 +461,7 @@ NdpSwitchQueue::DoEnqueue(Ptr<QueueDiscItem> item)
                     if (m_highQueue.size() < m_highQueueMaxPackets)
                     {
                         m_highQueue.push_back(trimmedItem);
+                        m_highQueueStats.currentBytes += trimmedItem->GetSize();
                         PacketEnqueued(trimmedItem);
                         m_ndpTraceEnqueue(trimmedItem);
                         return true;
@@ -529,6 +497,7 @@ NdpSwitchQueue::DoEnqueue(Ptr<QueueDiscItem> item)
                 // HighQueue has space: proceed with normal tail-trim
                 // Remove tail packet from low queue
                 Ptr<QueueDiscItem> tailItem = m_lowQueue.back();
+                m_lowQueueStats.currentBytes -= tailItem->GetSize();
                 m_lowQueue.pop_back();
                 
                 // Trim the tail packet
@@ -541,11 +510,13 @@ NdpSwitchQueue::DoEnqueue(Ptr<QueueDiscItem> item)
                 
                 // Enqueue trimmed tail header to high queue (space confirmed above)
                 m_highQueue.push_back(trimmedItem);
+                m_highQueueStats.currentBytes += trimmedItem->GetSize();
                 PacketEnqueued(trimmedItem);
                 m_ndpTraceEnqueue(trimmedItem);
                 
                 // Enqueue the arriving packet in the freed low-queue slot
                 m_lowQueue.push_back(item);
+                m_lowQueueStats.currentBytes += item->GetSize();
                 PacketEnqueued(item);
                 m_ndpTraceEnqueue(item);
                 RecordLowQueueLength();
@@ -563,35 +534,7 @@ Ptr<QueueDiscItem>
 NdpSwitchQueue::DoDequeue()
 {
     NS_LOG_FUNCTION(this);
-    
-    uint32_t nodeId = Simulator::GetContext();
-    Time now = Simulator::Now();
-    
-    // 🔍 DEBUG: Track DoDequeue call timing
-    static std::map<uint32_t, Time> lastDequeueTime;
-    static std::map<uint32_t, uint64_t> dequeueCount;
-    
-    Time interval = Time(0);
-    if (lastDequeueTime.find(nodeId) != lastDequeueTime.end())
-    {
-        interval = now - lastDequeueTime[nodeId];
-    }
-    lastDequeueTime[nodeId] = now;
-    dequeueCount[nodeId]++;
-    
-    // Log every 100th dequeue or when interval is significant (>10us)
-    if (dequeueCount[nodeId] % 100 == 0 || interval.GetMicroSeconds() > 10)
-    {
-        // std::cout << "📤 [DoDequeue-CALL] Node=" << nodeId
-        //           << " Call#" << dequeueCount[nodeId]
-        //           << " Time=" << now.GetMicroSeconds() << "us"
-        //           << " Interval=" << interval.GetMicroSeconds() << "us"
-        //           << " HighQ=" << m_highQueue.size() << "/" << m_highQueueMaxPackets
-        //           << " LowQ=" << m_lowQueue.size() << "/" << m_lowQueueMaxPackets
-        //           << " Credits=" << m_highQueueCredits
-        //           << std::endl;
-    }
-    
+
     // ── Strict Priority scheduling (NDP paper §3.2) ────────────────────────
     //
     //  Control packets (trim headers, ACKs, NACKs, PULLs) in the HIGH queue
@@ -625,6 +568,7 @@ NdpSwitchQueue::DoDequeue()
     if (!m_highQueue.empty())
     {
         Ptr<QueueDiscItem> item = m_highQueue.front();
+        m_highQueueStats.currentBytes -= item->GetSize();
         m_highQueue.pop_front();
         g_sw_ctrl_dequeued++;
         RecordHighQueueLength();
@@ -639,6 +583,7 @@ NdpSwitchQueue::DoDequeue()
     if (!m_lowQueue.empty())
     {
         Ptr<QueueDiscItem> item = m_lowQueue.front();
+        m_lowQueueStats.currentBytes -= item->GetSize();
         m_lowQueue.pop_front();
         RecordLowQueueLength();
 
@@ -752,18 +697,13 @@ NdpSwitchQueue::Run()
       return m_returnToSenderCount;
   }
 
-  // ── Low-queue length recording (mirrors FifoQueueDiscEcn pattern) ───────
+  // ── Queue length recording (incremental byte tracking, O(1) per call) ───
   void
   NdpSwitchQueue::RecordLowQueueLength()
   {
-      uint32_t lowQBytes = 0;
-      for (const auto& item : m_lowQueue)
-      {
-          lowQBytes += item->GetSize();
-      }
-      m_lowQueueStats.currentBytes = lowQBytes;
-
       uint32_t lowQPkts = m_lowQueue.size();
+      uint32_t lowQBytes = m_lowQueueStats.currentBytes;
+
       if (lowQPkts > m_lowQueueStats.maxQLengthPackets)
           m_lowQueueStats.maxQLengthPackets = lowQPkts;
       if (lowQBytes > m_lowQueueStats.maxQLengthBytes)
@@ -780,18 +720,12 @@ NdpSwitchQueue::Run()
       }
   }
 
-  // ── High-queue length recording ───────────────────────────────────────────
   void
   NdpSwitchQueue::RecordHighQueueLength()
   {
-      uint32_t highQBytes = 0;
-      for (const auto& item : m_highQueue)
-      {
-          highQBytes += item->GetSize();
-      }
-      m_highQueueStats.currentBytes = highQBytes;
-
       uint32_t highQPkts = m_highQueue.size();
+      uint32_t highQBytes = m_highQueueStats.currentBytes;
+
       if (highQPkts > m_highQueueStats.maxQLengthPackets)
           m_highQueueStats.maxQLengthPackets = highQPkts;
       if (highQBytes > m_highQueueStats.maxQLengthBytes)
