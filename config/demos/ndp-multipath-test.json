@@ -1,0 +1,109 @@
+{
+    "inputFile": {
+        "topo": "config/topo/simple-tree4.txt"
+    },
+    "outputFile": {
+        "resultFile": "output/ndp-tests/ndp-multipath-test-*.json"
+    },
+    "runtimeConfig": {
+        "seed": 7,
+        "runningTime": "1s",
+        "stopTime": "10s"
+    },
+    "defaultConfig": {
+        "NdpSocket": {
+            "FirstWindowSize": 20
+        },
+        "NdpSwitchQueue": {
+            "LowQueueMaxPackets": 16,
+            "HighQueueMaxPackets": 100,
+            "HighQueueWeight": 10,
+            "LowQueueWeight": 1
+        }
+    },
+    "globalConfig": {
+        "detailedSenderStats": true,
+        "detailedRetxStats": true,
+        "detailedQlengthStats": true,
+        "qlengthRecordInterval": "10us",
+        "detailedThroughputStats": true,
+        "deviceThroughputRecordInterval": "10us",
+        "ndpTrimStats": true,
+        "ndpRtsStats": true
+    },
+    "topologyConfig": {
+        "flowControlConfig": [
+            {
+                "nodes": "host",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpHostQueue",
+                "queueDiscConfig": {}
+            },
+            {
+                "nodes": "switch",
+                "bufferSize": "32MiB",
+                "bufferPerPort": "0.675MiB",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpSwitchQueue",
+                "queueDiscConfig": {
+                    "LowQueueMaxPackets": 16,
+                    "HighQueueMaxPackets": 100,
+                    "HighQueueWeight": 10,
+                    "LowQueueWeight": 1
+                }
+            }
+        ],
+        "linkConfig": [
+            {
+                "links": "0",
+                "rate": "10Gbps",
+                "delay": "3us"
+            }
+        ],
+        "multipathConfig": {
+            "numPaths": 4,
+            "baseNetwork": "10.0.0.0",
+            "networkMask": "255.255.0.0"
+        }
+    },
+    "applicationConfig": [
+        {
+            "NOTE": "4 senders (nodes 0-3) each sending 5 MB to node 4 — tests multipath and incast",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[0:4]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 5000000,
+                "DestFixed": true,
+                "DestinationNode": 4
+            },
+            "ndpConfig": {
+                "firstWindowSize": 20,
+                "pullLinkRate": "10Gbps"
+            },
+            "multipathConfig": {
+                "numPaths": 4,
+                "pathSelection": "random-permutation"
+            },
+            "startTime": "0.100s",
+            "stopTime": "0.15s"
+        },
+        {
+            "NOTE": "Receiver side: node 4 listens",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[4:]",
+            "applicationConfig": {
+                "SendEnabled": false
+            },
+            "ndpConfig": {
+                "pullLinkRate": "10Gbps"
+            },
+            "startTime": "0.1s"
+        }
+    ]
+}

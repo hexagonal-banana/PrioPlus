@@ -1,0 +1,134 @@
+{
+    "inputFile": {
+        "topo": "config/topo/star1001.txt"
+    },
+    "outputFile": {
+        "resultFile": "output/ndp-tests/fig3c-ndp-*.json"
+    },
+    "runtimeConfig": {
+        "seed": 8259,
+        "runningTime": "1s",
+        "stopTime": "10s"
+    },
+    "defaultConfig": {
+        "NdpSocket": {
+            "FirstWindowSize": 103
+        },
+        "NdpSwitchQueue": {
+            "LowQueueMaxPackets": 8,
+            "HighQueueMaxPackets": 20000,
+            "HighQueueWeight": 10,
+            "LowQueueWeight": 1
+        }
+    },
+    "globalConfig": {
+        "detailedSenderStats": true,
+        "detailedRetxStats": false,
+        "detailedQlengthStats": true,
+        "qlengthRecordInterval": "10us",
+        "detailedThroughputStats": false,
+        "deviceThroughputRecordInterval": "10us",
+        "ndpTrimStats": true,
+        "ndpRtsStats": true
+    },
+    "topologyConfig": {
+        "flowControlConfig": [
+            {
+                "nodes": "host",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpHostQueue",
+                "queueDiscConfig": {
+                    "MaxPackets": 50000
+                }
+            },
+            {
+                "nodes": "switch",
+                "bufferSize": "3200MiB",
+                "bufferPerPort": "3.2MiB",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpSwitchQueue",
+                "queueDiscConfig": {
+                    "LowQueueMaxPackets": 8,
+                    "HighQueueMaxPackets": 20000,
+                    "HighQueueWeight": 10,
+                    "LowQueueWeight": 1
+                }
+            }
+        ],
+        "linkConfig": [
+            {
+                "links": "0",
+                "rate": "100Gbps",
+                "delay": "3us"
+            }
+        ],
+        "multipathConfig": {
+            "numPaths": 1,
+            "baseNetwork": "10.0.0.0",
+            "networkMask": "255.255.0.0"
+        }
+    },
+    "applicationConfig": [
+        {
+            "NOTE": "Primary traffic - 300KB flows from nodes 1-301 to node 0 (Incast)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[1:301]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 300000,
+                "DestFixed": true,
+                "DestinationNode": 0
+            },
+            "ndpConfig": {
+                "firstWindowSize": 103,
+                "pullLinkRate": "100Gbps"
+            },
+            "multipathConfig": {
+                "numPaths": 1,
+                "pathSelection": "random"
+            },
+            "startTime": "0.1s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Primary traffic - 10MB flow from node 301 to node 0 (Large flow)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[301]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 10000000,
+                "DestFixed": true,
+                "DestinationNode": 0
+            },
+            "ndpConfig": {
+                "firstWindowSize": 103,
+                "pullLinkRate": "100Gbps"
+            },
+            "multipathConfig": {
+                "numPaths": 1,
+                "pathSelection": "random"
+            },
+            "startTime": "0.102s",
+            "flowInterval": "0.0000s"
+        },
+        {
+            "NOTE": "Receiver side application",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[0]",
+            "applicationConfig": {
+                "SendEnabled": false
+            },
+            "ndpConfig": {
+                "pullLinkRate": "100Gbps"
+            },
+            "startTime": "0.1s"
+        }
+    ]
+}

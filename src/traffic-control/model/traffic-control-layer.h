@@ -136,6 +136,21 @@ class TrafficControlLayer : public Object
                                  uint16_t protocolType,
                                  Ptr<NetDevice> device);
 
+    /**
+     * \brief Remove all protocol handlers registered for a given protocol
+     *        type and device.
+     *
+     * This is useful on switch nodes to remove the default
+     * Ipv4L3Protocol::Receive handler and keep only the custom
+     * SwitchNode::ReceivePacketAfterTc handler, preventing double
+     * processing of transit packets.
+     *
+     * \param protocolType the protocol type whose handlers should be removed
+     * \param device       the device whose handlers should be removed.
+     *                     A null pointer means "all devices".
+     */
+    void ClearProtocolHandlers(uint16_t protocolType, Ptr<NetDevice> device);
+
     /// Typedef for queue disc vector
     typedef std::vector<Ptr<QueueDisc>> QueueDiscVector;
 

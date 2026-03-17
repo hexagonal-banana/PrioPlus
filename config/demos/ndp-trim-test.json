@@ -1,0 +1,110 @@
+{
+    "inputFile": {
+        "topo": "config/topo/simple-tree4.txt"
+    },
+    "outputFile": {
+        "resultFile": "output/ndp-trim-test-*.json"
+    },
+    "runtimeConfig": {
+        "seed": 15,
+        "runningTime": "1s",
+        "stopTime": "10s"
+    },
+    "defaultConfig": {
+        "NdpSocket": {
+            "FirstWindowSize": 30
+        },
+        "NdpSwitchQueue": {
+            "LowQueueMaxPackets": 8,
+            "HighQueueMaxPackets": 150,
+            "HighQueueWeight": 10,
+            "LowQueueWeight": 1
+        }
+    },
+    "globalConfig": {
+        "detailedSenderStats": true,
+        "detailedRetxStats": false,
+        "detailedQlengthStats": true,
+        "qlengthRecordInterval": "10us",
+        "detailedThroughputStats": true,
+        "deviceThroughputRecordInterval": "10us",
+        "ndpTrimStats": true,
+        "ndpRtsStats": true
+    },
+    "topologyConfig": {
+        "flowControlConfig": [
+            {
+                "NOTE": "Hosts use a simple large FIFO — no Trim/RTS on host egress",
+                "nodes": "host",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpHostQueue",
+                "queueDiscConfig": {}
+            },
+            {
+                "NOTE": "Switches use NdpSwitchQueue — small low/high queues trigger Trim and RTS",
+                "nodes": "switch",
+                "bufferSize": "32MiB",
+                "bufferPerPort": "0.675MiB",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpSwitchQueue",
+                "queueDiscConfig": {
+                    "LowQueueMaxPackets": 8,
+                    "HighQueueMaxPackets": 150,
+                    "HighQueueWeight": 10,
+                    "LowQueueWeight": 1
+                }
+            }
+        ],
+        "linkConfig": [
+            {
+                "links": "0",
+                "rate": "1Gbps",
+                "delay": "10us"
+            }
+        ],
+        "multipathConfig": {
+            "numPaths": 4,
+            "baseNetwork": "10.0.0.0",
+            "networkMask": "255.255.0.0"
+        }
+    },
+    "applicationConfig": [
+        {
+            "NOTE": "4 senders (nodes 0-3) simultaneously burst first window to node 4 — incast triggers Trim",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[0:4]",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "SEND_ONCE",
+                "FlowSize": 1000000,
+                "DestFixed": true,
+                "DestinationNode": 4
+            },
+            "ndpConfig": {
+                "firstWindowSize": 30,
+                "pullLinkRate": "1Gbps"
+            },
+            "multipathConfig": {
+                "numPaths": 1,
+                "pathSelection": "random"
+            },
+            "startTime": "0.100s"
+        },
+        {
+            "NOTE": "Receiver side: only node 4 listens (node 5 is the switch, must be excluded)",
+            "appType": "ns3::NdpTrafficGenApplication",
+            "protocol": "NDP",
+            "nodes": "[4]",
+            "applicationConfig": {
+                "SendEnabled": false
+            },
+            "ndpConfig": {
+                "pullLinkRate": "1Gbps"
+            },
+            "startTime": "0.1s"
+        }
+    ]
+}
