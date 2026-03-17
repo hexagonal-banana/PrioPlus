@@ -74,6 +74,11 @@ class RoCEv2CongestionOps : public Object
 
     void SetSockState(Ptr<RoCEv2SocketState> sockState);
 
+    virtual uint32_t GetNextPacketPriority(uint32_t defaultPriority)
+    {
+        return defaultPriority;
+    }
+
     /**
      ********** VIRTUAL FUNCTIONS**********
      * implemented by subclasses.
@@ -94,16 +99,20 @@ class RoCEv2CongestionOps : public Object
      *
      * Note: This function has the pointer of the packet to send as parameter, which has the
      * RoCev2Header and is used after calling this function in RoCEv2Socket::DoSendDataPacket. So,
-     * the packet should be carefully modified in this.
+     * When the sender sending out a packet, recover a timeslot into the map.
      */
     virtual void UpdateStateSend(Ptr<Packet> packet)
     {
     }
 
-    virtual void UpdateStateRecvData(Ptr<Packet> packet,
-                                     const RoCEv2Header& roce)
+    virtual void SetFlowId(uint32_t flowId)
     {
     }
+
+    virtual void UpdateStateRecvData(Ptr<Packet> packet, const RoCEv2Header& roce)
+    {
+    }
+
     /**
      * \brief When receiving a CNP, update the state if needed.
      *

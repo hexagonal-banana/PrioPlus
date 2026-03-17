@@ -481,6 +481,43 @@ class RoCEv2SocketState : public Object
     }
 
     /**
+     * \brief Set the flow ID for this socket state
+     * \param flowId the flow ID to set
+     */
+    inline void SetFlowId(uint32_t flowId)
+    {
+        m_flowId = flowId;
+    }
+
+    /**
+     * \brief Get the flow ID of this socket state
+     * \return the flow ID
+     */
+    inline uint32_t GetFlowId() const
+    {
+        return m_flowId;
+    }
+
+    /**
+     * \brief Allocate a unique flow ID across all socket states
+     * \return a unique flow ID
+     */
+    static uint32_t AllocateFlowId();
+
+    /**
+     * \brief Generate a flow ID based on flow characteristics
+     * \param srcAddr source IP address
+     * \param srcPort source port
+     * \param dstAddr destination IP address
+     * \param dstPort destination port
+     * \return generated flow ID
+     */
+    static uint32_t GenerateFlowId(Ipv4Address srcAddr, 
+                                   uint32_t srcPort, 
+                                   Ipv4Address dstAddr, 
+                                   uint32_t dstPort);
+
+    /**
      * \brief Check if rateRatio is less than 1.0 and greater than m_minRateRatio.
      * if not, return the corrected rateRatio.
      * \return the corrected rateRatio.
@@ -517,6 +554,8 @@ class RoCEv2SocketState : public Object
     uint32_t m_packetSize;    //!< MSS + headersize
     uint32_t m_mss;           //!< MSS
     uint64_t m_flowTotalSize; //!< The total size of the flow
+    uint32_t m_flowId;  //The flow id
+    static uint32_t m_totalflowId;//the total flow id
 
 }; // class RoCEv2SocketState
 
