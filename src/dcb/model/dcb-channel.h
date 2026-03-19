@@ -86,6 +86,11 @@ class DcbChannel : public Channel
      */
     Time GetDelay(void) const;
 
+    /**
+     * \brief Set propagation delay directly.
+     */
+    void SetDelay(Time delay);
+
   protected:
     /**
      * \brief Check to make sure the link is initialized

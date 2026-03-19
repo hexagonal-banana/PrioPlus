@@ -33,141 +33,129 @@
  
  NS_LOG_COMPONENT_DEFINE("JsonTopologyHelper");
  
- namespace json_util
- {
+namespace json_util
+{
+
+static boost::json::object
+NormalizeFlowControlConfig(const boost::json::object& fcConfig)
+{
+    boost::json::object normalized(fcConfig);
+
+    if (!normalized.contains("queueDisc"))
+    {
+        return normalized;
+    }
+
+    boost::json::value queueDisc = normalized.at("queueDisc");
+    boost::json::value queueDiscConfig = normalized.contains("queueDiscConfig")
+                                             ? normalized.at("queueDiscConfig")
+                                             : boost::json::object{};
+
+    normalized["flowControlPort"] = "ns3::DcbPfcPort";
+    normalized["flowControlPortConfig"] = {
+        {"EnableIngressControl", false},
+        {"EnableEgressControl", false},
+        {"EnableVec", 0}
+    };
+    normalized["outerQueueDisc"] = queueDisc;
+    normalized["outerQueueDiscConfig"] = queueDiscConfig;
+    normalized["innerQueueDisc"] = queueDisc;
+    normalized["innerQueueDiscConfig"] = queueDiscConfig;
+
+    return normalized;
+}
  
- std::shared_ptr<DcbFcHelper>
- ConstructFcHelper(const boost::json::object& fcConfig)
- {
-     std::shared_ptr<DcbFcHelper> fcHelper = std::make_shared<DcbFcHelper>();
+std::shared_ptr<DcbFcHelper>
+ConstructFcHelper(const boost::json::object& fcConfig)
+{
+    boost::json::object normalizedFcConfig = NormalizeFlowControlConfig(fcConfig);
+    std::shared_ptr<DcbFcHelper> fcHelper = std::make_shared<DcbFcHelper>();
  
      // Read and set the attributes of fcHelper
-     JsonCallIfExistsString(fcConfig, "bufferSize", [fcHelper](std::string bufferSize) {
-         fcHelper->SetBufferSize(QueueSize(bufferSize));
-     });
-     JsonCallIfExistsString(fcConfig, "bufferPerPort", [fcHelper](std::string bufferPerPort) {
-         fcHelper->SetBufferPerPort(QueueSize(bufferPerPort));
-     });
-     JsonCallIfExistsInt<uint32_t>(
-         fcConfig,
-         "numQueuePerPort",
-         [fcHelper](uint32_t numQueuePerPort) { fcHelper->SetNumQueuePerPort(numQueuePerPort); });
-     JsonCallIfExistsFloat<double>(
-         fcConfig,
-         "bufferBandwidthRatio",
-         [fcHelper](double bufferBandwidthRatio) { fcHelper->SetBufferBandwidthRatio(bufferBandwidthRatio); });
-     JsonCallIfExistsInt<uint32_t>(
-         fcConfig,
-         "numLosslessQueue",
-         [fcHelper](uint32_t numLosslessQueue) { fcHelper->SetNumLosslessQueue(numLosslessQueue); });
+    JsonCallIfExistsString(normalizedFcConfig, "bufferSize", [fcHelper](std::string bufferSize) {
+        fcHelper->SetBufferSize(QueueSize(bufferSize));
+    });
+    JsonCallIfExistsString(normalizedFcConfig, "bufferPerPort", [fcHelper](std::string bufferPerPort) {
+        fcHelper->SetBufferPerPort(QueueSize(bufferPerPort));
+    });
+    JsonCallIfExistsInt<uint32_t>(
+        normalizedFcConfig,
+        "numQueuePerPort",
+        [fcHelper](uint32_t numQueuePerPort) { fcHelper->SetNumQueuePerPort(numQueuePerPort); });
+    JsonCallIfExistsFloat<double>(
+        normalizedFcConfig,
+        "bufferBandwidthRatio",
+        [fcHelper](double bufferBandwidthRatio) { fcHelper->SetBufferBandwidthRatio(bufferBandwidthRatio); });
+    JsonCallIfExistsInt<uint32_t>(
+        normalizedFcConfig,
+        "numLosslessQueue",
+        [fcHelper](uint32_t numLosslessQueue) { fcHelper->SetNumLosslessQueue(numLosslessQueue); });
  
      // Read and set TypeId and Attributes of
-     // TrafficControlLayer, flowControlPort, flowControlMmuQueue, outerQdisc, innerQdisc
-     std::string tclType =
-         JsonGetStringOrRaise(fcConfig, "trafficControlLayer", "trafficControlLayer is not found");
-     std::unique_ptr<std::vector<ConfigEntry_t>> tclConfigVector = ConstructConfigVector(
-         JsonGetObjectOrRaise(fcConfig,
-                              "trafficControlLayerConfig",
-                              "trafficControlLayertrafficControlLayerConfig is not found"));
-     fcHelper->SetTrafficControlTypeId(tclType);
-     fcHelper->SetTrafficControlAttributes(std::move(*tclConfigVector));
+    // TrafficControlLayer, flowControlPort, flowControlMmuQueue, outerQdisc, innerQdisc
+    std::string tclType =
+        JsonGetStringOrRaise(normalizedFcConfig, "trafficControlLayer", "trafficControlLayer is not found");
+    std::unique_ptr<std::vector<ConfigEntry_t>> tclConfigVector = ConstructConfigVector(
+        JsonGetObjectOrRaise(normalizedFcConfig,
+                             "trafficControlLayerConfig",
+                             "trafficControlLayertrafficControlLayerConfig is not found"));
+    fcHelper->SetTrafficControlTypeId(tclType);
+    fcHelper->SetTrafficControlAttributes(std::move(*tclConfigVector));
+
+    std::string fcpType =
+        JsonGetStringOrRaise(normalizedFcConfig, "flowControlPort", "flowControlPort is not found");
+    std::unique_ptr<std::vector<ConfigEntry_t>> fcpConfigVector =
+        ConstructConfigVector(JsonGetObjectOrRaise(normalizedFcConfig,
+                                                   "flowControlPortConfig",
+                                                   "flowControlPortConfig is not found"));
+    fcHelper->SetFlowControlPortTypeId(fcpType);
+    fcHelper->SetFlowControlPortAttributes(std::move(*fcpConfigVector));
+
+    // flowControlMmuQueue is optional
+    JsonCallIfExistsString(
+        normalizedFcConfig,
+        "flowControlMmuQueue",
+        [normalizedFcConfig, fcHelper](std::string fcqType) {
+            fcHelper->SetFlowControlMmuQueueTypeId(fcqType);
+            std::unique_ptr<std::vector<ConfigEntry_t>> fcqConfigVector = ConstructConfigVector(
+                JsonGetObjectOrRaise(normalizedFcConfig,
+                                     "flowControlMmuQueueConfig",
+                                     "flowControlMmuQueueConfig is not found"));
+            fcHelper->SetFlowControlMmuQueueAttributes(std::move(*fcqConfigVector));
+        });
+
+    std::string oqdType =
+        JsonGetStringOrRaise(normalizedFcConfig, "outerQueueDisc", "outerQueueDisc is not found");
+    std::unique_ptr<std::vector<ConfigEntry_t>> oqdConfigVector =
+        ConstructConfigVector(JsonGetObjectOrRaise(normalizedFcConfig,
+                                                   "outerQueueDiscConfig",
+                                                   "outerQueueDiscConfig is not found"));
+    fcHelper->SetOuterQueueDiscTypeId(oqdType);
+    fcHelper->SetOuterQueueDiscAttributes(std::move(*oqdConfigVector));
+
+    std::string iqdType =
+        JsonGetStringOrRaise(normalizedFcConfig, "innerQueueDisc", "innerQueueDisc is not found");
+    std::unique_ptr<std::vector<ConfigEntry_t>> iqdConfigVector =
+        ConstructConfigVector(JsonGetObjectOrRaise(normalizedFcConfig,
+                                                   "innerQueueDiscConfig",
+                                                   "innerQueueDiscConfig is not found"));
+    fcHelper->SetInnerQueueDiscTypeId(iqdType);
+    fcHelper->SetInnerQueueDiscAttributes(std::move(*iqdConfigVector));
  
-     // Check if this is NDP configuration (uses single queueDisc instead of outer/inner)
-     bool isNdpConfig = fcConfig.contains("queueDisc");
- 
-     if (isNdpConfig)
-     {
-         // NDP configuration: single queue disc (NdpSwitchQueue)
-         // NDP does NOT use flowControlPort for PFC, but we still need to set a valid type
-         // Use DcbPfcPort with all features disabled as a placeholder
-         fcHelper->SetFlowControlPortTypeId("ns3::DcbPfcPort");
-         std::unique_ptr<std::vector<ConfigEntry_t>> dummyConfig = 
-             std::make_unique<std::vector<ConfigEntry_t>>();
-         // Disable all PFC features for NDP
-         dummyConfig->push_back(std::make_pair("EnableIngressControl", BooleanValue(false).Copy()));
-         dummyConfig->push_back(std::make_pair("EnableEgressControl", BooleanValue(false).Copy()));
-         dummyConfig->push_back(std::make_pair("EnableVec", UintegerValue(0).Copy()));
-         fcHelper->SetFlowControlPortAttributes(std::move(*dummyConfig));
-         
-         std::string qdType =
-             JsonGetStringOrRaise(fcConfig, "queueDisc", "queueDisc is not found");
-         std::unique_ptr<std::vector<ConfigEntry_t>> qdConfigVector =
-             ConstructConfigVector(JsonGetObjectOrRaise(fcConfig,
-                                                        "queueDiscConfig",
-                                                        "queueDiscConfig is not found"));
-         
-         // For NDP, we use the same queue disc as both outer and inner
-         fcHelper->SetOuterQueueDiscTypeId(qdType);
-         fcHelper->SetOuterQueueDiscAttributes(std::move(*qdConfigVector));
-         
-         // Set inner queue disc to the same type for consistency
-         std::unique_ptr<std::vector<ConfigEntry_t>> qdConfigVector2 = ConstructConfigVector(
-             JsonGetObjectOrRaise(fcConfig,
-                                  "queueDiscConfig",
-                                  "queueDiscConfig is not found"));
-         fcHelper->SetInnerQueueDiscTypeId(qdType);
-         fcHelper->SetInnerQueueDiscAttributes(std::move(*qdConfigVector2));
-         
-         NS_LOG_INFO("Configured NDP queue disc: " << qdType);
-     }
-     else
-     {
-         // RoCEv2 configuration: separate outer and inner queue discs
-         std::string fcpType =
-             JsonGetStringOrRaise(fcConfig, "flowControlPort", "flowControlPort is not found");
-         std::unique_ptr<std::vector<ConfigEntry_t>> fcpConfigVector =
-             ConstructConfigVector(JsonGetObjectOrRaise(fcConfig,
-                                                        "flowControlPortConfig",
-                                                        "flowControlPortConfig is not found"));
-         fcHelper->SetFlowControlPortTypeId(fcpType);
-         fcHelper->SetFlowControlPortAttributes(std::move(*fcpConfigVector));
- 
-         // flowControlMmuQueue is optional
-         JsonCallIfExistsString(
-             fcConfig,
-             "flowControlMmuQueue",
-             [fcConfig, fcHelper](std::string fcqType) {
-                 fcHelper->SetFlowControlMmuQueueTypeId(fcqType);
-                 std::unique_ptr<std::vector<ConfigEntry_t>> fcqConfigVector = ConstructConfigVector(
-                     JsonGetObjectOrRaise(fcConfig,
-                                          "flowControlMmuQueueConfig",
-                                          "flowControlMmuQueueConfig is not found"));
-                 fcHelper->SetFlowControlMmuQueueAttributes(std::move(*fcqConfigVector));
-             });
- 
-         std::string oqdType =
-             JsonGetStringOrRaise(fcConfig, "outerQueueDisc", "outerQueueDisc is not found");
-         std::unique_ptr<std::vector<ConfigEntry_t>> oqdConfigVector =
-             ConstructConfigVector(JsonGetObjectOrRaise(fcConfig,
-                                                        "outerQueueDiscConfig",
-                                                        "outerQueueDiscConfig is not found"));
-         fcHelper->SetOuterQueueDiscTypeId(oqdType);
-         fcHelper->SetOuterQueueDiscAttributes(std::move(*oqdConfigVector));
- 
-         std::string iqdType =
-             JsonGetStringOrRaise(fcConfig, "innerQueueDisc", "innerQueueDisc is not found");
-         std::unique_ptr<std::vector<ConfigEntry_t>> iqdConfigVector =
-             ConstructConfigVector(JsonGetObjectOrRaise(fcConfig,
-                                                        "innerQueueDiscConfig",
-                                                        "innerQueueDiscConfig is not found"));
-         fcHelper->SetInnerQueueDiscTypeId(iqdType);
-         fcHelper->SetInnerQueueDiscAttributes(std::move(*iqdConfigVector));
-     }
- 
-     JsonCallIfExistsString(fcConfig, "priorityVec", [fcHelper](std::string priorityVec) {
+    JsonCallIfExistsString(normalizedFcConfig, "priorityVec", [fcHelper](std::string priorityVec) {
          fcHelper->SetPriorities(ConvertRangeToVector(priorityVec.c_str(), fcHelper->GetNumQueuePerPort()));
      });
-     JsonCallIfExistsString(fcConfig, "quantumVec", [fcHelper](std::string quantumVec) {
+    JsonCallIfExistsString(normalizedFcConfig, "quantumVec", [fcHelper](std::string quantumVec) {
          fcHelper->SetQuantum(ConvertRangeToVector(quantumVec.c_str(), fcHelper->GetNumQueuePerPort()));
      });
      
      JsonCallIfExistsInt<uint32_t>(
-         fcConfig,
+         normalizedFcConfig,
          "maxCredit",
          [fcHelper](uint32_t maxCredit) { fcHelper->SetMaxCredit(maxCredit); });
  
      // Parse and set priority rate limits if they exist
-     JsonCallIfExistsArray(fcConfig, "prioRateLimits", [fcHelper](const boost::json::array& rateLimitsArray) {
+     JsonCallIfExistsArray(normalizedFcConfig, "prioRateLimits", [fcHelper](const boost::json::array& rateLimitsArray) {
         std::vector<std::tuple<uint32_t, double, uint32_t>> rateLimits;
          for (const auto& rateLimitObj : rateLimitsArray)
          {
@@ -332,23 +320,26 @@
              JsonGetStringOrRaise(linkConfig.as_object(), "rate", "rate is not found");
          std::string delay =
              JsonGetStringOrRaise(linkConfig.as_object(), "delay", "delay is not found");
-         linkConfigMap->insert({linkName, {DataRate(rate), Time(delay)}});
+         LinkConfig cfg;
+         cfg.rate = DataRate(rate);
+         cfg.delay = Time(delay);
+         (*linkConfigMap)[linkName] = cfg;
      }
      return linkConfigMap;
  }
  
- static void
- InstallLink(const LinkConfig& linkConfig, Ptr<DcbNetDevice> dev1, Ptr<DcbNetDevice> dev2)
- {
-     dev1->SetAttribute("DataRate", DataRateValue(linkConfig.rate));
-     dev2->SetAttribute("DataRate", DataRateValue(linkConfig.rate));
+static void
+InstallLink(const LinkConfig& linkConfig, Ptr<DcbNetDevice> dev1, Ptr<DcbNetDevice> dev2)
+{
+     dev1->ConfigureDataRate(linkConfig.rate);
+     dev2->ConfigureDataRate(linkConfig.rate);
  
      Ptr<DcbChannel> channel = CreateObject<DcbChannel>();
-     channel->SetAttribute("Delay", TimeValue(linkConfig.delay));
+     channel->SetDelay(linkConfig.delay);
  
      dev1->Attach(channel);
      dev2->Attach(channel);
- }
+}
  
  static void
  AssignAddress(const Ptr<Node> node, const Ptr<NetDevice> device)
@@ -542,7 +533,20 @@
              }
          }
          // Install link
-         InstallLink(linkConfigMap->find(type)->second, vDevs[0], vDevs[1]);
+         auto chosenIt = linkConfigMap->find(type);
+         if (chosenIt == linkConfigMap->end())
+         {
+             if (linkConfigMap->size() == 1)
+             {
+                 chosenIt = linkConfigMap->begin();
+             }
+             else
+             {
+                 NS_FATAL_ERROR("Cannot find linkConfig for topology link type '" << type << "'");
+             }
+         }
+         const auto& chosenLink = chosenIt->second;
+         InstallLink(chosenLink, vDevs[0], vDevs[1]);
      }
  
      // Install flow control protocols after building the topology
@@ -557,39 +561,21 @@
      if (topoObj.contains("multipathConfig"))
      {
          
-         // Install NDP L4 protocol on HOST nodes only.
-         // Switch nodes forward NDP packets at L2/L3 via SwitchNode::SendIpv4Packet;
-         // they do not terminate NDP flows and must not have NdpSockets.
-         for (uint32_t i = 0; i < node_num; i++)
-         {
-             auto& topoNode = topology->GetNode(i);
-             if (topoNode.type != DcTopology::TopoNode::NodeType::HOST)
-             {
+        // Install NDP L4 protocol on HOST nodes only.
+        // Switch nodes forward NDP packets at L2/L3 via SwitchNode::SendIpv4Packet;
+        // they do not terminate NDP flows and must not have NdpSockets.
+        NdpApplicationHelper ndpHelper;
+        for (uint32_t i = 0; i < node_num; i++)
+        {
+            auto& topoNode = topology->GetNode(i);
+            if (topoNode.type != DcTopology::TopoNode::NodeType::HOST)
+            {
                  NS_LOG_DEBUG("Skipping NDP L4 install on switch node " << i);
                  continue;
-             }
-             Ptr<Node> node = topoNode.nodePtr;
-             Ptr<NdpL4Protocol> ndp = node->GetObject<NdpL4Protocol>();
-             if (ndp == nullptr)
-             {
-                 ndp = CreateObject<NdpL4Protocol>();
-                 node->AggregateObject(ndp);
-                 NS_LOG_DEBUG("Installed NDP L4 protocol on host node " << i);
-                 
-                 Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
-                 if (ipv4)
-                 {
-                     ipv4->Insert(ndp);
-                     std::cout << "✅ [Topology] Registered NDP protocol " << (int)NdpL4Protocol::PROT_NUMBER 
-                               << " with IPv4 on node " << i << std::endl;
-                 }
-                 else
-                 {
-                     std::cout << "❌ [Topology] ERROR: IPv4 not found on host node " << i << std::endl;
-                     NS_LOG_WARN("Cannot register NDP protocol: IPv4 not found on node " << i);
-                 }
-             }
-         }
+            }
+            Ptr<Node> node = topoNode.nodePtr;
+            ndpHelper.EnsureNdpL4Protocol(node);
+        }
          
          // Configure multipath routing AFTER PopulateRoutingTables
          // (moved below to avoid being overwritten)

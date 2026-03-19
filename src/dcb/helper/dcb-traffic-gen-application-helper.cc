@@ -22,7 +22,9 @@
 #include "ns3/dc-topology.h"
 #include "ns3/dcb-net-device.h"
 #include "ns3/dcb-traffic-gen-application.h"
+#include "ns3/ipv4.h"
 #include "ns3/node.h"
+#include "ns3/ndp-l4-protocol.h"
 #include "ns3/nstime.h"
 #include "ns3/real-time-application.h"
 #include "ns3/rocev2-l4-protocol.h"
@@ -31,6 +33,31 @@
 
 namespace ns3
 {
+
+namespace
+{
+
+Ptr<NdpL4Protocol>
+EnsureNdpL4Protocol(Ptr<Node> node)
+{
+    Ptr<NdpL4Protocol> ndp = node->GetObject<NdpL4Protocol>();
+    if (ndp == nullptr)
+    {
+        ndp = CreateObject<NdpL4Protocol>();
+        node->AggregateObject(ndp);
+
+        Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
+        if (ipv4 == nullptr)
+        {
+            NS_FATAL_ERROR("Cannot install NDP protocol on node " << node->GetId()
+                           << ": IPv4 not found");
+        }
+        ipv4->Insert(ndp);
+    }
+    return ndp;
+}
+
+} // namespace
 
 DcbTrafficGenApplicationHelper::DcbTrafficGenApplicationHelper(Ptr<DcTopology> topo)
     : m_topology(topo),
@@ -184,6 +211,10 @@ DcbTrafficGenApplicationHelper::InstallPriv(Ptr<Node> node)
     case DcbTrafficGenApplication::ProtocolGroup::RoCEv2:
         // must be called after node->AddApplication () becasue it needs to know the node
         app->SetInnerUdpProtocol(RoCEv2L4Protocol::GetTypeId());
+        break;
+    case DcbTrafficGenApplication::ProtocolGroup::NDP:
+        EnsureNdpL4Protocol(node);
+        break;
     };
     return app;
 }

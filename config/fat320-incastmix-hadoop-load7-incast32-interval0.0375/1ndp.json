@@ -1,0 +1,135 @@
+{
+    "inputFile": {
+        "topo": "config/topo/fat-16-4-5.txt"
+    },
+    "outputFile": {
+        "resultFile": "output/*-mixincast-1ndp.json"
+    },
+    "runtimeConfig": {
+        "seed": 1,
+        "runningTime": "1s",
+        "stopTime": "3s"
+    },
+    "defaultConfig": {
+        "NdpSocket": {
+            "FirstWindowSize": 103,
+            "RtoMs": 0.1
+        },
+        "NdpL4Protocol": {
+            "PullMtu": 1456
+        },
+        "NdpSwitchQueue": {
+            "LowQueueMaxPackets": 8,
+            "HighQueueMaxPackets": 20000,
+            "HighQueueWeight": 10,
+            "LowQueueWeight": 1
+        },
+        "SwitchNode": {
+            "RoutingMode": "PER_PACKET_SYMMETRIC"
+        }
+    },
+    "globalConfig": {
+        "detailedSenderStats": false,
+        "detailedRetxStats": false,
+        "detailedQlengthStats": false,
+        "qlengthRecordInterval": "10us",
+        "detailedThroughputStats": false,
+        "deviceThroughputRecordInterval": "10us",
+        "ndpTrimStats": true,
+        "ndpRtsStats": false
+    },
+    "topologyConfig": {
+        "flowControlConfig": [
+            {
+                "nodes": "host",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpHostQueue",
+                "queueDiscConfig": {
+                    "MaxPackets": 50000
+                }
+            },
+            {
+                "nodes": "switch",
+                "bufferSize": "32MiB",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "queueDisc": "ns3::NdpSwitchQueue",
+                "queueDiscConfig": {
+                    "LowQueueMaxPackets": 8,
+                    "HighQueueMaxPackets": 20000,
+                    "HighQueueWeight": 10,
+                    "LowQueueWeight": 1
+                }
+            }
+        ],
+        "linkConfig": [
+            {
+                "links": "host",
+                "rate": "100Gbps",
+                "delay": "1us"
+            },
+            {
+                "links": "switch",
+                "rate": "400Gbps",
+                "delay": "1us"
+            }
+        ],
+        "multipathConfig": {
+            "numPaths": 8,
+            "baseNetwork": "10.0.0.0",
+            "networkMask": "255.255.0.0"
+        }
+    },
+    "applicationConfig": [
+        {
+            "NOTE": "Incast",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "all",
+            "protocolGroup": "NDP",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "FileRequest",
+                "FileRequestNodesNum": 32,
+                "IncastFlowInterval": "0.0375us",
+                "TrafficSizeBytes": 45000000,
+                "TrafficLoad": 0.2,
+                "FlowPriority": 1,
+                "FlowType": "Incast"
+            },
+            "startTime": "0.1s",
+            "stopTime": "0.11s"
+        },
+        {
+            "NOTE": "Background traffic",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "all",
+            "protocolGroup": "NDP",
+            "applicationConfig": {
+                "SendEnabled": true,
+                "TrafficPattern": "CDF",
+                "TrafficLoad": 0.5,
+                "FlowPriority": 1,
+                "FlowType": "Background"
+            },
+            "cdf": {
+                "cdfFile": "config/trace/FbHdp_distribution.txt",
+                "avgSize": 0,
+                "scaleFactor": 0
+            },
+            "startTime": "0.1s",
+            "stopTime": "0.11s"
+        },
+        {
+            "NOTE": "Receiver side application",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "all",
+            "protocolGroup": "NDP",
+            "applicationConfig": {
+                "SendEnabled": false,
+                "FlowPriority": 0
+            },
+            "startTime": "0.1s"
+        }
+    ]
+}

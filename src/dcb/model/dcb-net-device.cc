@@ -224,7 +224,6 @@ uint64_t g_nic_ndp_rx = 0;
 uint64_t g_nic_ndp_tx = 0;
 // Global counter for NDP packets dropped at DcbNetDevice m_queue
 uint64_t g_nic_ndp_drop = 0;  // was static, now extern-visible for diagnostics
-
 // ══════════════════════════════════════════════════════════════════════════════
 // Per-device link utilization tracking
 // ══════════════════════════════════════════════════════════════════════════════
@@ -390,8 +389,8 @@ void PrintLinkUtilizationStats()
 }
 
  void
- DcbNetDevice::Receive(Ptr<Packet> packet)
- {
+DcbNetDevice::Receive(Ptr<Packet> packet)
+{
      NS_LOG_FUNCTION(this << packet);
 
      if (m_receiveErrorModel && m_receiveErrorModel->IsCorrupt(packet))
@@ -416,7 +415,6 @@ void PrintLinkUtilizationStats()
          EthernetHeader ethHeader;
          packet->RemoveHeader(ethHeader);
          uint16_t protocol = ethHeader.GetLengthType();
- 
          //
          // Trace sinks will expect complete packets, not packets without some of the
          // headers.
@@ -530,7 +528,6 @@ void PrintLinkUtilizationStats()
 
     Time txTime = m_bps.CalculateBytesTxTime(packet->GetSize());
     Time txCompleteTime = txTime + m_tInterframeGap;
- 
      NS_LOG_LOGIC("Schedule TransmitCompleteEvent in " << txCompleteTime.As(Time::S));
      Simulator::Schedule(txCompleteTime, &DcbNetDevice::TransmitComplete, this);
  
@@ -652,12 +649,12 @@ void PrintLinkUtilizationStats()
      return Address();
  }
  
- void
- DcbNetDevice::SetDataRate(DataRate bps)
- {
+void
+DcbNetDevice::SetDataRate(DataRate bps)
+{
      NS_LOG_FUNCTION(this);
      m_bps = bps;
- }
+}
  
  DataRate
  DcbNetDevice::GetDataRate() const

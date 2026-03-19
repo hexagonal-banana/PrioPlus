@@ -149,6 +149,7 @@ class DcbNetDevice : public NetDevice
     virtual bool SupportsSendFrom(void) const override;
 
     DataRate GetDataRate() const;
+    void ConfigureDataRate(DataRate bps) { SetDataRate(bps); }
 
     void SetQueueDisc(Ptr<PausableQueueDisc> queueDisc);
     Ptr<PausableQueueDisc> GetQueueDisc() const;

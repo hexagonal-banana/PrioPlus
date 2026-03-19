@@ -7,6 +7,7 @@
 #include "ns3/data-rate.h"
 #include "ns3/inet-socket-address.h"
 #include "ns3/ipv4.h"
+#include "ns3/json-utils.h"
 #include "ns3/log.h"
 #include "ns3/names.h"
 #include "ns3/node.h"
@@ -88,7 +89,7 @@ NdpApplicationHelper::InstallNdpApplications(const boost::json::object& appConfi
     }
     else
     {
-        nodeIndices = ParseNodeSpec(nodeSpec, topology);
+        nodeIndices = ParseNodeSpec(nodeSpec, topology, false);
     }
     NS_LOG_INFO("Installing NDP applications on " << nodeIndices.size() << " nodes");
 
@@ -314,14 +315,11 @@ NdpApplicationHelper::EnsureNdpL4Protocol(Ptr<Node> node)
         if (ipv4)
         {
             ipv4->Insert(ndp);
-            std::cout << "✅ Registered NDP protocol " << (int)NdpL4Protocol::PROT_NUMBER 
-                      << " with IPv4 on node " << node->GetId() << std::endl;
             NS_LOG_INFO("Registered NDP L4 protocol (protocol " << (int)NdpL4Protocol::PROT_NUMBER 
                         << ") with IPv4 on node " << node->GetId());
         }
         else
         {
-            std::cout << "❌ ERROR: IPv4 not found on node " << node->GetId() << std::endl;
             NS_LOG_WARN("Cannot register NDP protocol: IPv4 not found on node " << node->GetId());
         }
     }
@@ -329,87 +327,50 @@ NdpApplicationHelper::EnsureNdpL4Protocol(Ptr<Node> node)
 }
 
 std::vector<uint32_t>
-NdpApplicationHelper::ParseNodeSpec(const std::string& nodeSpec, Ptr<DcTopology> topology)
+NdpApplicationHelper::ParseNodeSpec(const std::string& nodeSpec,
+                                    Ptr<DcTopology> topology,
+                                    bool hostsOnly)
 {
     std::vector<uint32_t> nodeIndices;
 
     if (nodeSpec == "all")
     {
-        // All nodes
-        for (uint32_t i = 0; i < topology->GetNNodes(); i++)
+        uint32_t maxNodes = hostsOnly ? topology->GetNHosts() : topology->GetNNodes();
+        for (uint32_t i = 0; i < maxNodes; i++)
         {
             nodeIndices.push_back(i);
         }
     }
-    else if (nodeSpec.find("[") != std::string::npos)
+    else if (boost::algorithm::starts_with(nodeSpec, "random"))
     {
-        // Node specification with brackets.  Supported formats:
-        //   "[N]"      – single node N
-        //   "[A:B]"    – nodes A, A+1, …, B-1  (exclusive end, Python-style)
-        //   "[A:]"     – nodes A … GetNNodes()-1
-        //   "[:B]"     – nodes 0 … B-1
-        std::string rangeStr = nodeSpec;
-        rangeStr.erase(std::remove(rangeStr.begin(), rangeStr.end(), '['), rangeStr.end());
-        rangeStr.erase(std::remove(rangeStr.begin(), rangeStr.end(), ']'), rangeStr.end());
-
-        if (rangeStr.find(':') == std::string::npos)
+        uint32_t maxNodes = hostsOnly ? topology->GetNHosts() : topology->GetNNodes();
+        uint32_t count = maxNodes / 2;
+        auto pos = nodeSpec.find(' ');
+        if (pos != std::string::npos)
         {
-            // ── Single node: "[N]" ──────────────────────────────────────────
-            uint32_t nodeId = static_cast<uint32_t>(std::stoi(rangeStr));
-            NS_ABORT_MSG_UNLESS(nodeId < topology->GetNNodes(),
-                                "ParseNodeSpec: node id " << nodeId
-                                << " out of range (nNodes=" << topology->GetNNodes() << ")");
-            nodeIndices.push_back(nodeId);
+            count = static_cast<uint32_t>(std::stoi(nodeSpec.substr(pos + 1)));
         }
-        else
-        {
-            // ── Range: "[A:B]" / "[A:]" / "[:B]" ──────────────────────────
-            std::vector<std::string> parts;
-            boost::split(parts, rangeStr, boost::is_any_of(":"));
+        count = std::min(count, maxNodes);
 
-            uint32_t start = 0;
-            uint32_t end = topology->GetNNodes();
-
-            if (parts.size() >= 1 && !parts[0].empty())
-            {
-                start = static_cast<uint32_t>(std::stoi(parts[0]));
-            }
-            if (parts.size() >= 2 && !parts[1].empty())
-            {
-                end = static_cast<uint32_t>(std::stoi(parts[1]));
-            }
-
-            for (uint32_t i = start; i < end && i < topology->GetNNodes(); i++)
-            {
-                nodeIndices.push_back(i);
-            }
-        }
-    }
-    else if (nodeSpec == "random")
-    {
-        // Random subset - for now, just select half
-        uint32_t count = topology->GetNNodes() / 2;
-        std::vector<uint32_t> allNodes;
-        for (uint32_t i = 0; i < topology->GetNNodes(); i++)
-        {
-            allNodes.push_back(i);
-        }
+        std::vector<uint32_t> allNodes(maxNodes);
+        std::iota(allNodes.begin(), allNodes.end(), 0);
         std::random_device rd;
         std::mt19937 g(rd());
         std::shuffle(allNodes.begin(), allNodes.end(), g);
-        for (uint32_t i = 0; i < count; i++)
-        {
-            nodeIndices.push_back(allNodes[i]);
-        }
+        nodeIndices.insert(nodeIndices.end(), allNodes.begin(), allNodes.begin() + count);
     }
     else
     {
-        // Single node or comma-separated list
-        std::vector<std::string> parts;
-        boost::split(parts, nodeSpec, boost::is_any_of(","));
-        for (const auto& part : parts)
+        uint32_t maxNodes = hostsOnly ? topology->GetNHosts() : topology->GetNNodes();
+        nodeIndices = json_util::ConvertRangeToVector(nodeSpec, maxNodes);
+        if (!hostsOnly)
         {
-            nodeIndices.push_back(std::stoi(part));
+            for (uint32_t nodeId : nodeIndices)
+            {
+                NS_ABORT_MSG_UNLESS(nodeId < topology->GetNNodes(),
+                                    "ParseNodeSpec: node id " << nodeId
+                                    << " out of range (nNodes=" << topology->GetNNodes() << ")");
+            }
         }
     }
 

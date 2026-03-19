@@ -82,43 +82,41 @@ static uint64_t g_send_no_route   = 0;   ///< NdpL4Protocol::Send() no route fou
 extern uint64_t g_nic_ndp_rx;    ///< NDP pkts received at any NIC (from dcb-net-device.cc)
 extern uint64_t g_nic_ndp_tx;    ///< NDP pkts transmitted at any NIC (from dcb-net-device.cc)
 extern uint64_t g_nic_ndp_drop;  ///< NDP pkts dropped at DcbNetDevice m_queue (from dcb-net-device.cc)
-
-// ── NDP SIMULATION CORRECTNESS REPORT (temporarily disabled) ─────────────────
+// ── NDP SIMULATION CORRECTNESS REPORT ────────────────────────────────────────
 // Forward declarations for stats-print functions defined in other .cc files.
-// void PrintNdpSwitchStats();
-// void PrintNdpSocketStats();
-// void PrintNdpHostQueueStats();
-// void PrintSwitchNodeStats();
-// void PrintLinkUtilizationStats();
-//
-// static void
-// PrintNdpAllStats()
-// {
-//     std::cout << "\n"
-//               << "══════════════════════════════════════════════════════\n"
-//               << "  NDP SIMULATION CORRECTNESS REPORT\n"
-//               << "══════════════════════════════════════════════════════\n";
-//     PrintNdpHostQueueStats();
-//     PrintNdpSwitchStats();
-//     PrintSwitchNodeStats();
-//     std::cout << "╔══════════════════════════════════════════════════╗\n"
-//               << "║          NDP Pull Pipeline Statistics            ║\n"
-//               << "╠══════════════════════════════════════════════════╣\n"
-//               << "║  L4 Send() total calls          : " << std::setw(8) << g_send_calls     << "              ║\n"
-//               << "║  L4 Send() no route (dropped)   : " << std::setw(8) << g_send_no_route  << "              ║\n"
-//               << "║  EnqueuePull() calls (rx side)  : " << std::setw(8) << g_pull_enqueued  << "              ║\n"
-//               << "║  SendOnePull() calls (tx pkts)  : " << std::setw(8) << g_pull_sent      << "              ║\n"
-//               << "║  NDP pkts sent by any NIC (tx)  : " << std::setw(8) << g_nic_ndp_tx     << "              ║\n"
-//               << "║  NDP pkts arriving at any NIC   : " << std::setw(8) << g_nic_ndp_rx     << "              ║\n"
-//               << "║  (Note: L4 sends=" << std::setw(6) << g_send_calls << " NIC tx=" << std::setw(6) << g_nic_ndp_tx << " diff=" << static_cast<int64_t>(g_send_calls) - static_cast<int64_t>(g_nic_ndp_tx) << ") ║\n"
-//               << "║  PULL pkts arriving at Receive(): " << std::setw(8) << g_pull_rx_total  << "              ║\n"
-//               << "║  PULL pkts with no socket found : " << std::setw(8) << g_pull_rx_nosock << "              ║\n"
-//               << "║  NIC m_queue drops (DcbNetDev)  : " << std::setw(8) << g_nic_ndp_drop   << "              ║\n"
-//               << "╚══════════════════════════════════════════════════╝\n";
-//     PrintNdpSocketStats();
-//     PrintLinkUtilizationStats();
-//     std::cout << "══════════════════════════════════════════════════════\n\n";
-// }
+void PrintNdpSwitchStats();
+void PrintNdpSocketStats();
+void PrintNdpHostQueueStats();
+void PrintSwitchNodeStats();
+void PrintLinkUtilizationStats();
+
+static void
+PrintNdpAllStats()
+{
+    std::cout << "\n"
+              << "══════════════════════════════════════════════════════\n"
+              << "  NDP SIMULATION CORRECTNESS REPORT\n"
+              << "══════════════════════════════════════════════════════\n";
+    PrintNdpHostQueueStats();
+    PrintNdpSwitchStats();
+    PrintSwitchNodeStats();
+    std::cout << "╔══════════════════════════════════════════════════╗\n"
+              << "║          NDP Pull Pipeline Statistics            ║\n"
+              << "╠══════════════════════════════════════════════════╣\n"
+              << "║  L4 Send() total calls          : " << std::setw(8) << g_send_calls     << "              ║\n"
+              << "║  L4 Send() no route (dropped)   : " << std::setw(8) << g_send_no_route  << "              ║\n"
+              << "║  EnqueuePull() calls (rx side)  : " << std::setw(8) << g_pull_enqueued  << "              ║\n"
+              << "║  SendOnePull() calls (tx pkts)  : " << std::setw(8) << g_pull_sent      << "              ║\n"
+              << "║  NDP pkts sent by any NIC (tx)  : " << std::setw(8) << g_nic_ndp_tx     << "              ║\n"
+              << "║  NDP pkts arriving at any NIC   : " << std::setw(8) << g_nic_ndp_rx     << "              ║\n"
+              << "║  PULL pkts arriving at Receive(): " << std::setw(8) << g_pull_rx_total  << "              ║\n"
+              << "║  PULL pkts with no socket found : " << std::setw(8) << g_pull_rx_nosock << "              ║\n"
+              << "║  NIC m_queue drops (DcbNetDev)  : " << std::setw(8) << g_nic_ndp_drop   << "              ║\n"
+              << "╚══════════════════════════════════════════════════╝\n";
+    PrintNdpSocketStats();
+    PrintLinkUtilizationStats();
+    std::cout << "══════════════════════════════════════════════════════\n\n";
+}
 
 NdpL4Protocol::NdpL4Protocol()
     : m_nextPort(49152), // Start of dynamic port range
@@ -127,13 +125,12 @@ NdpL4Protocol::NdpL4Protocol()
 {
     NS_LOG_FUNCTION(this);
 
-    // NDP SIMULATION CORRECTNESS REPORT (temporarily disabled)
-    // static bool s_statsScheduled = false;
-    // if (!s_statsScheduled)
-    // {
-    //     s_statsScheduled = true;
-    //     Simulator::ScheduleDestroy(&PrintNdpAllStats);
-    // }
+    static bool s_statsScheduled = false;
+    if (!s_statsScheduled)
+    {
+        s_statsScheduled = true;
+        Simulator::ScheduleDestroy(&PrintNdpAllStats);
+    }
 }
  
 NdpL4Protocol::~NdpL4Protocol()

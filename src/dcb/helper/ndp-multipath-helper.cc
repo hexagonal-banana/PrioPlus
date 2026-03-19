@@ -450,9 +450,9 @@ NdpMultipathHelper::ConfigureFatTreeRouting(Ptr<DcTopology> topology, uint32_t n
     // Validate
     if (coreNodes.size() != numPaths)
     {
-        std::cout << "⚠️  Fat-tree: detected " << coreNodes.size()
-                  << " core switches but numPaths=" << numPaths
-                  << ". Using min(" << coreNodes.size() << "," << numPaths << ")." << std::endl;
+        NS_LOG_WARN("Fat-tree detected " << coreNodes.size()
+                    << " core switches but numPaths=" << numPaths
+                    << ". Using min(" << coreNodes.size() << "," << numPaths << ").");
         numPaths = std::min(numPaths, static_cast<uint32_t>(coreNodes.size()));
     }
 
@@ -465,21 +465,10 @@ NdpMultipathHelper::ConfigureFatTreeRouting(Ptr<DcTopology> topology, uint32_t n
         coreNodeToIdx[coreList[i]] = i;
     }
 
-    std::cout << "╔══════════════════════════════════════════════════════════╗\n"
-              << "║   NDP Per-Packet Multipath: Fat-tree Routing Config     ║\n"
-              << "╠══════════════════════════════════════════════════════════╣\n"
-              << "║  Hosts:  " << hostNodes.size() << "   Leaves: " << leafNodes.size()
-              << "   Aggs: " << aggNodes.size() << "   Cores: " << coreNodes.size()
-              << std::string(std::max(0, 17 - (int)(std::to_string(hostNodes.size()).size() +
-                 std::to_string(leafNodes.size()).size() + std::to_string(aggNodes.size()).size() +
-                 std::to_string(coreNodes.size()).size())), ' ') << "║\n"
-              << "║  Paths (core switches): ";
-    for (uint32_t i = 0; i < coreList.size(); i++)
-    {
-        std::cout << "Core" << i << "=Node" << coreList[i];
-        if (i + 1 < coreList.size()) std::cout << ", ";
-    }
-    std::cout << std::endl;
+    NS_LOG_INFO("NDP fat-tree multipath config: hosts=" << hostNodes.size()
+                << ", leaves=" << leafNodes.size()
+                << ", aggs=" << aggNodes.size()
+                << ", cores=" << coreNodes.size());
 
     // ── Step 2: Compute subtree (downward-reachable hosts) per switch ────
     // subtree[switchId] = { hostId1, hostId2, ... }
@@ -648,12 +637,9 @@ NdpMultipathHelper::ConfigureFatTreeRouting(Ptr<DcTopology> topology, uint32_t n
         }
     }
 
-    std::cout << "║  Total routes injected: " << totalRoutes
-              << " across " << (leafNodes.size() + aggNodes.size() + coreNodes.size())
-              << " switches" << std::endl;
-    std::cout << "║  Subnet scheme: 10.(coreIdx+1).0.0/16 → Core[coreIdx]" << std::endl;
-    std::cout << "║  Host IPs: 10.(coreIdx+1).0.(hostIdx+1)" << std::endl;
-    std::cout << "╚══════════════════════════════════════════════════════════╝" << std::endl;
+    NS_LOG_INFO("NDP fat-tree multipath routes injected: total=" << totalRoutes
+                << ", switches=" << (leafNodes.size() + aggNodes.size() + coreNodes.size())
+                << ", subnet scheme=10.(coreIdx+1).0.0/16");
 }
 
 // ============================================================================
@@ -738,7 +724,7 @@ NdpMultipathHelper::ConfigureAutoRouting(Ptr<DcTopology> topology, uint32_t numP
     // ── Step 3: Edge cases ──────────────────────────────────────────────
     if (maxTier < 1)
     {
-        std::cout << "⚠️  Topology has no switches — multipath not applicable.\n";
+        NS_LOG_WARN("Topology has no switches; multipath not applicable.");
         return 0;
     }
 
@@ -746,18 +732,18 @@ NdpMultipathHelper::ConfigureAutoRouting(Ptr<DcTopology> topology, uint32_t numP
 
     if (topTierNodes.size() <= 1)
     {
-        std::cout << "ℹ️  Topology has only " << topTierNodes.size()
-                  << " top-tier switch(es) (maxTier=" << maxTier
-                  << ") — multipath not needed.\n";
+        NS_LOG_INFO("Topology has only " << topTierNodes.size()
+                    << " top-tier switch(es) (maxTier=" << maxTier
+                    << "); multipath not needed.");
         return topTierNodes.size();
     }
 
     // Clamp numPaths to actual top-tier switch count
     if (numPaths > topTierNodes.size())
     {
-        std::cout << "⚠️  Requested numPaths=" << numPaths
-                  << " but only " << topTierNodes.size()
-                  << " top-tier switches. Clamping.\n";
+        NS_LOG_WARN("Requested numPaths=" << numPaths
+                    << " but only " << topTierNodes.size()
+                    << " top-tier switches. Clamping.");
         numPaths = static_cast<uint32_t>(topTierNodes.size());
     }
 
@@ -770,21 +756,11 @@ NdpMultipathHelper::ConfigureAutoRouting(Ptr<DcTopology> topology, uint32_t numP
         topNodeToIdx[topList[i]] = i;
     }
 
-    // Print topology summary
-    std::cout << "╔══════════════════════════════════════════════════════════╗\n"
-              << "║   NDP Per-Packet Multipath: Auto Routing Config         ║\n"
-              << "╠══════════════════════════════════════════════════════════╣\n"
-              << "║  Topology tiers: " << maxTier << "  (";
-    for (int t = 1; t <= maxTier; t++)
-    {
-        std::cout << "tier" << t << "=" << tierNodes[t].size();
-        if (t < maxTier) std::cout << ", ";
-    }
-    std::cout << ")\n"
-              << "║  Hosts: " << hostNodes.size()
-              << "  Total switches: " << (N - hostNodes.size())
-              << "  Top-tier (path det.): " << topTierNodes.size() << "\n"
-              << "║  Paths: " << numPaths << " (top-tier switches as path determiners)\n";
+    NS_LOG_INFO("NDP auto multipath config: tiers=" << maxTier
+                << ", hosts=" << hostNodes.size()
+                << ", switches=" << (N - hostNodes.size())
+                << ", top-tier=" << topTierNodes.size()
+                << ", paths=" << numPaths);
 
     // ── Step 4: Compute subtrees bottom-up ──────────────────────────────
     // subtree[switchId] = set of host IDs reachable downward
@@ -904,13 +880,8 @@ NdpMultipathHelper::ConfigureAutoRouting(Ptr<DcTopology> topology, uint32_t numP
                 hostRoutesAdded++;
             }
         }
-        std::cout << "║  Host static routes: " << hostRoutesAdded
-                  << " (multipath subnets → interface 1)";
-        if (hostSkipped > 0)
-        {
-            std::cout << "  [" << hostSkipped << " hosts skipped]";
-        }
-        std::cout << "\n";
+        NS_LOG_INFO("Host static routes added=" << hostRoutesAdded
+                    << " (multipath subnets -> interface 1), skipped hosts=" << hostSkipped);
     }
 
     // ── Step 7: Inject switch routes ────────────────────────────────────
@@ -976,11 +947,9 @@ NdpMultipathHelper::ConfigureAutoRouting(Ptr<DcTopology> topology, uint32_t numP
         }
     }
 
-    std::cout << "║  Total routes injected: " << totalRoutes
-              << " across " << (N - hostNodes.size()) << " switches\n"
-              << "║  Subnet scheme: 10.(pathIdx+1).0.0/16 → TopTier[pathIdx]\n"
-              << "║  Host IPs: 10.(pathIdx+1).0.(hostIdx+1)\n"
-              << "╚══════════════════════════════════════════════════════════╝\n";
+    NS_LOG_INFO("NDP auto multipath routes injected: total=" << totalRoutes
+                << ", switches=" << (N - hostNodes.size())
+                << ", subnet scheme=10.(pathIdx+1).0.0/16");
 
     return numPaths;
 }

@@ -1,6 +1,7 @@
 #include "ndp-socket.h"
 
 #include "ndp-l4-protocol.h"
+#include "rocev2-socket.h"
 
 #include "ns3/inet-socket-address.h"
 #include "ns3/ipv4.h"
@@ -1022,6 +1023,7 @@ NdpSocket::SendDataPacket(uint32_t seq, bool isRetransmit, uint8_t avoidPath)
      {
          m_flowCompleted = true;
          g_sock_flows_done++;
+         g_completedFlows.fetch_add(1);
          NS_LOG_INFO("Flow completed (all-ACKed): connId=" << m_connectionId
                      << " totalPkts=" << (m_lastSeq - m_firstSeq)
                      << " @" << Simulator::Now().GetSeconds() << "s");

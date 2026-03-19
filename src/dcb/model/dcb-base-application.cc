@@ -18,6 +18,8 @@
 #include "dcb-base-application.h"
 
 #include "dcb-net-device.h"
+#include "ndp-l4-protocol.h"
+#include "ndp-socket.h"
 #include "rocev2-dcqcn.h"
 #include "rocev2-l4-protocol.h"
 #include "rocev2-socket.h"
@@ -159,6 +161,12 @@ DcbBaseApplication::SetProtocolGroup(ProtocolGroup protoGroup)
         m_socketTid = TcpSocketFactory::GetTypeId();
         m_headerSize = 20 + 20 + 14 + 2;
     }
+    else if (protoGroup == ProtocolGroup::NDP)
+    {
+        // IPv4 + Ethernet + NDP header (+2B padding to mirror existing accounting style)
+        m_headerSize = 20 + 14 + 22 + 2;
+        m_dataHeaderSize = m_headerSize;
+    }
 }
 
 void
@@ -253,6 +261,22 @@ DcbBaseApplication::SetupReceiverSocket()
             roceSocket->SetRecvCallback(MakeCallback(&DcbBaseApplication::HandleRead, this));
         }
     }
+    else if (m_protoGroup == ProtocolGroup::NDP)
+    {
+        Ptr<NdpL4Protocol> ndpL4 = GetNode()->GetObject<NdpL4Protocol>();
+        if (ndpL4 == nullptr)
+        {
+            NS_FATAL_ERROR("NDP L4 protocol is not installed on node " << GetNode()->GetId());
+        }
+
+        Ptr<NdpSocket> ndpSocket = ndpL4->CreateSocket();
+        m_receiverSocket = ndpSocket;
+        ndpSocket->Bind(InetSocketAddress(Ipv4Address::GetAny(), 4000));
+        ndpSocket->SetRecvCallback(MakeCallback(&DcbBaseApplication::HandleRead, this));
+        ndpSocket->SetAcceptCallback(MakeNullCallback<bool, Ptr<Socket>, const Address&>(),
+                                     MakeCallback(&DcbBaseApplication::HandleNdpAccept, this));
+        ndpSocket->Listen();
+    }
     // TCP
     else if (m_protoGroup == ProtocolGroup::TCP)
     {
@@ -292,7 +316,18 @@ DcbBaseApplication::StartApplication(void)
     {
         InitMembers();
         CalcTrafficParameters();
-        GenerateTraffic();
+        if (m_protoGroup == ProtocolGroup::NDP)
+        {
+            // NDP is receiver-driven but has no TCP-style handshake.
+            // When sender/receiver apps share the same startTime on different nodes,
+            // let all receivers finish binding/listening first to avoid dropping the
+            // sender's initial push window at t=0.
+            Simulator::Schedule(NanoSeconds(1), &DcbBaseApplication::GenerateTraffic, this);
+        }
+        else
+        {
+            GenerateTraffic();
+        }
     }
 }
 
@@ -319,6 +354,9 @@ DcbBaseApplication::NodeIndexToAddr(uint32_t destNode) const
     case ProtocolGroup::RoCEv2:
         portNum = RoCEv2L4Protocol::DefaultServicePort();
         break;
+    case ProtocolGroup::NDP:
+        portNum = 4000;
+        break;
     }
 
     // 0 interface is LoopbackNetDevice
@@ -333,6 +371,60 @@ Ptr<Socket>
 DcbBaseApplication::CreateNewSocket(uint32_t destNode, uint32_t priority)
 {
     NS_LOG_FUNCTION(this);
+    if (m_protoGroup == ProtocolGroup::NDP)
+    {
+        Ptr<NdpL4Protocol> ndpL4 = GetNode()->GetObject<NdpL4Protocol>();
+        if (ndpL4 == nullptr)
+        {
+            NS_FATAL_ERROR("NDP L4 protocol is not installed on node " << GetNode()->GetId());
+        }
+
+        Ptr<NdpSocket> ndpSocket = ndpL4->CreateSocket();
+        for (const auto& [name, value] : m_socketAttributes)
+        {
+            ndpSocket->SetAttribute(name, *value);
+        }
+
+        std::vector<Ipv4Address> paths;
+        Ptr<Node> destNodePtr = m_topology->GetNode(destNode).nodePtr;
+        Ptr<Ipv4> destIpv4 = destNodePtr->GetObject<Ipv4>();
+        if (destIpv4 != nullptr)
+        {
+            for (uint32_t ifIdx = 1; ifIdx < destIpv4->GetNInterfaces(); ++ifIdx)
+            {
+                Ipv4Address pathIp = destIpv4->GetAddress(ifIdx, 0).GetLocal();
+                if (pathIp != Ipv4Address::GetZero())
+                {
+                    paths.push_back(pathIp);
+                }
+            }
+        }
+        if (paths.empty())
+        {
+            NS_FATAL_ERROR("Destination node " << destNode << " has no usable IPv4 path for NDP");
+        }
+
+        ndpSocket->SetPaths(paths);
+        if (ndpSocket->Bind() == -1)
+        {
+            NS_FATAL_ERROR("Failed to bind NDP socket");
+        }
+        ndpSocket->SetFlowCompleteCallback(MakeCallback(
+            static_cast<void (DcbBaseApplication::*)(Ptr<NdpSocket>)>(
+                &DcbBaseApplication::FlowCompletes),
+            this));
+
+        InetSocketAddress destAddr(paths.front(), 4000);
+        if (ndpSocket->Connect(destAddr) == -1)
+        {
+            NS_FATAL_ERROR("NDP socket connection failed");
+        }
+
+        Ptr<Socket> socket = ndpSocket;
+        socket->SetRecvCallback(MakeCallback(&DcbBaseApplication::HandleRead, this));
+        return socket;
+    }
+
     InetSocketAddress destAddr = NodeIndexToAddr(destNode);
     return CreateNewSocket(destAddr, priority);
 }
@@ -342,15 +434,48 @@ DcbBaseApplication::CreateNewSocket(InetSocketAddress destAddr, uint32_t priorit
 {
     NS_LOG_FUNCTION(this);
 
-    // The InstanceTyoeId of socket is RoCEv2Socket
-    Ptr<Socket> socket = Socket::CreateSocket(GetNode(), m_socketTid);
-    socket->SetIpTos(priority << 2);
-    // bool isRoce = false;
+    Ptr<Socket> socket;
+    int ret = 0;
+    uint32_t outDevIdx = 0;
 
-    int ret = socket->Bind();
-    if (ret == -1)
+    if (m_protoGroup == ProtocolGroup::NDP)
     {
-        NS_FATAL_ERROR("Failed to bind socket");
+        Ptr<NdpL4Protocol> ndpL4 = GetNode()->GetObject<NdpL4Protocol>();
+        if (ndpL4 == nullptr)
+        {
+            NS_FATAL_ERROR("NDP L4 protocol is not installed on node " << GetNode()->GetId());
+        }
+        Ptr<NdpSocket> ndpSocket = ndpL4->CreateSocket();
+        socket = ndpSocket;
+
+        ndpSocket->SetPaths({destAddr.GetIpv4()});
+
+        for (const auto& [name, value] : m_socketAttributes)
+        {
+            ndpSocket->SetAttribute(name, *value);
+        }
+
+        ret = ndpSocket->Bind();
+        if (ret == -1)
+        {
+            NS_FATAL_ERROR("Failed to bind NDP socket");
+        }
+        ndpSocket->SetFlowCompleteCallback(MakeCallback(
+            static_cast<void (DcbBaseApplication::*)(Ptr<NdpSocket>)>(
+                &DcbBaseApplication::FlowCompletes),
+            this));
+    }
+    else
+    {
+        // The InstanceTypeId of socket is RoCEv2Socket or TcpSocket
+        socket = Socket::CreateSocket(GetNode(), m_socketTid);
+        socket->SetIpTos(priority << 2);
+
+        ret = socket->Bind();
+        if (ret == -1)
+        {
+            NS_FATAL_ERROR("Failed to bind socket");
+        }
     }
     uint32_t srcPort = 0;
     uint32_t dstPort = destAddr.GetPort();
@@ -371,11 +496,14 @@ DcbBaseApplication::CreateNewSocket(InetSocketAddress destAddr, uint32_t priorit
         // tcpSocket->GetPeerName(address);
         // dstPort = InetSocketAddress::ConvertFrom(address).GetPort();
     }
-    uint32_t outDevIdx = m_topology->GetOutDevIdx(GetNode(), destAddr.GetIpv4(), srcPort, dstPort);
-    Ptr<NetDevice> outDev = GetNode()->GetDevice(outDevIdx);
-    socket->BindToNetDevice(outDev);
+    if (m_protoGroup != ProtocolGroup::NDP)
+    {
+        outDevIdx = m_topology->GetOutDevIdx(GetNode(), destAddr.GetIpv4(), srcPort, dstPort);
+        Ptr<NetDevice> outDev = GetNode()->GetDevice(outDevIdx);
+        socket->BindToNetDevice(outDev);
+    }
 
-    if (m_ecnEnabled)
+    if (m_ecnEnabled && m_protoGroup != ProtocolGroup::NDP)
     {
         // The low 2-bits of TOS field is ECN field.
         // The Tos of a flow is setted here.
@@ -393,7 +521,9 @@ DcbBaseApplication::CreateNewSocket(InetSocketAddress destAddr, uint32_t priorit
         if (udpBasedSocket)
         {
             udpBasedSocket->SetFlowCompleteCallback(
-                MakeCallback(&DcbBaseApplication::FlowCompletes, this));
+                MakeCallback(static_cast<void (DcbBaseApplication::*)(Ptr<UdpBasedSocket>)>(
+                                 &DcbBaseApplication::FlowCompletes),
+                             this));
             Ptr<RoCEv2Socket> roceSocket = DynamicCast<RoCEv2Socket>(udpBasedSocket);
             if (roceSocket)
             {
@@ -470,6 +600,17 @@ DcbBaseApplication::SendNextPacketWithTags(Flow* flow, std::vector<std::shared_p
         return;
     }
 
+    Ptr<NdpSocket> ndpSocket = DynamicCast<NdpSocket>(flow->socket);
+    if (ndpSocket)
+    {
+        // Suppress premature completion while the application is still queueing packets.
+        auto ndpStats = ndpSocket->GetStats();
+        ndpStats->tStart = flow->startTime;
+        ndpStats->nTotalSizeBytes = flow->totalBytes;
+        ndpStats->nTotalSizePkts = (flow->totalBytes + MSS - 1) / MSS;
+        ndpSocket->SetMoreDataPending(true);
+    }
+
     while (flow->remainBytes != 0)
     {
         const uint32_t packetSize = std::min(flow->remainBytes, MSS);
@@ -509,6 +650,11 @@ DcbBaseApplication::SendNextPacketWithTags(Flow* flow, std::vector<std::shared_p
                                 tags);
             return;
         }
+    }
+
+    if (ndpSocket)
+    {
+        ndpSocket->SetMoreDataPending(false);
     }
 
     // flow sending completes for RoCEv2Socket
@@ -595,6 +741,53 @@ DcbBaseApplication::FlowCompletes(Ptr<UdpBasedSocket> socket)
 }
 
 void
+DcbBaseApplication::FlowCompletes(Ptr<NdpSocket> socket)
+{
+    Ptr<Socket> baseSocket = socket;
+    auto p = m_flows.find(baseSocket);
+    if (p == m_flows.end())
+    {
+        NS_FATAL_ERROR("Cannot find NDP socket in this application on node "
+                       << Simulator::GetContext());
+    }
+
+    Flow* flow = p->second;
+    flow->finishTime = Simulator::Now();
+    auto ndpStats = socket->GetStats();
+    if (!ndpStats->tStart.IsStrictlyPositive())
+    {
+        ndpStats->tStart = flow->startTime;
+    }
+    ndpStats->tFinish = flow->finishTime;
+    ndpStats->nTotalSizeBytes = flow->totalBytes;
+    ndpStats->nTotalSizePkts = (flow->totalBytes + MSS - 1) / MSS;
+
+    Address localAddress;
+    Address peerAddress;
+    socket->GetSockName(localAddress);
+    socket->GetPeerName(peerAddress);
+
+    uint32_t srcPort = 0;
+    uint32_t dstPort = 0;
+    if (InetSocketAddress::IsMatchingType(localAddress))
+    {
+        srcPort = InetSocketAddress::ConvertFrom(localAddress).GetPort();
+    }
+    if (InetSocketAddress::IsMatchingType(peerAddress))
+    {
+        dstPort = InetSocketAddress::ConvertFrom(peerAddress).GetPort();
+    }
+
+    m_flowCompleteTrace(Simulator::GetContext(),
+                        flow->destNode,
+                        srcPort,
+                        dstPort,
+                        flow->totalBytes,
+                        flow->startTime,
+                        flow->finishTime);
+}
+
+void
 DcbBaseApplication::TcpFlowEnds(Flow* flow, SequenceNumber32 oldValue, SequenceNumber32 newValue)
 {
     if (newValue.GetValue() >= flow->totalBytes)
@@ -625,6 +818,14 @@ DcbBaseApplication::SetSocketAttributes(
 // TODO TCP callback Handler
 void
 DcbBaseApplication::HandleTcpAccept(Ptr<Socket> socket, const Address& from)
+{
+    NS_LOG_FUNCTION(this << socket << from);
+    socket->SetRecvCallback(MakeCallback(&DcbBaseApplication::HandleRead, this));
+    m_acceptedSocketList.push_back(socket);
+}
+
+void
+DcbBaseApplication::HandleNdpAccept(Ptr<Socket> socket, const Address& from)
 {
     NS_LOG_FUNCTION(this << socket << from);
     socket->SetRecvCallback(MakeCallback(&DcbBaseApplication::HandleRead, this));
@@ -686,6 +887,26 @@ DcbBaseApplication::SetFlowIdentifier(Flow* flow, Ptr<Socket> socket)
         Ipv4Address dstAddr = InetSocketAddress::ConvertFrom(address).GetIpv4();
         uint32_t dstPort = InetSocketAddress::ConvertFrom(address).GetPort();
         flow->flowIdentifier = FlowIdentifier(srcAddr, dstAddr, srcPort, dstPort);
+    }
+    else if (m_protoGroup == ProtocolGroup::NDP)
+    {
+        Address local;
+        Address peer;
+        socket->GetSockName(local);
+        socket->GetPeerName(peer);
+        if (InetSocketAddress::IsMatchingType(local) && InetSocketAddress::IsMatchingType(peer))
+        {
+            InetSocketAddress localAddr = InetSocketAddress::ConvertFrom(local);
+            InetSocketAddress peerAddr = InetSocketAddress::ConvertFrom(peer);
+            flow->flowIdentifier = FlowIdentifier(localAddr.GetIpv4(),
+                                                  peerAddr.GetIpv4(),
+                                                  localAddr.GetPort(),
+                                                  peerAddr.GetPort());
+        }
+        else
+        {
+            NS_FATAL_ERROR("Socket is not an IPv4 NDP socket");
+        }
     }
     else
     {
@@ -777,6 +998,51 @@ DcbBaseApplication::Stats::CollectAndCheck(std::map<Ptr<Socket>, Flow*> flows)
 
             mFlowStats[flow->flowIdentifier] = roceStats;
             vFlowStats.push_back(roceStats);
+        }
+        else if (m_app->GetProtoGroup() == ProtocolGroup::NDP)
+        {
+            Ptr<NdpSocket> ndpSocket = DynamicCast<NdpSocket>(socket);
+            if (ndpSocket != nullptr)
+            {
+                auto ndpStats = ndpSocket->GetStats();
+                ndpStats->CollectAndCheck();
+
+                nTotalSizePkts += ndpStats->nTotalSizePkts;
+                nTotalSizeBytes += ndpStats->nTotalSizeBytes;
+                nTotalSentPkts += ndpStats->nTotalSentPkts;
+                nTotalSentBytes += ndpStats->nTotalSentBytes;
+                nRetxCount += ndpStats->nRetxCount;
+                tStart = std::min(tStart, ndpStats->tStart);
+                tFinish = std::max(tFinish, ndpStats->tFinish);
+
+                std::shared_ptr<RoCEv2Socket::Stats> roceStats =
+                    std::make_shared<RoCEv2Socket::Stats>();
+                roceStats->nTotalSizePkts = ndpStats->nTotalSizePkts;
+                roceStats->nTotalSizeBytes = ndpStats->nTotalSizeBytes;
+                roceStats->nTotalSentPkts = ndpStats->nTotalSentPkts;
+                roceStats->nTotalSentBytes = ndpStats->nTotalSentBytes;
+                roceStats->nRetxCount = ndpStats->nRetxCount;
+                roceStats->tStart = ndpStats->tStart;
+                roceStats->tFinish = ndpStats->tFinish;
+                roceStats->tFct = ndpStats->tFct;
+                roceStats->overallFlowRate = ndpStats->overallFlowRate;
+                roceStats->flowTag = ndpStats->flowTag;
+                roceStats->bDetailedSenderStats = ndpStats->bDetailedSenderStats;
+                roceStats->bDetailedRetxStats = ndpStats->bDetailedRetxStats;
+                roceStats->vSentPkt = ndpStats->vSentPkt;
+
+                for (const auto& [time, seq] : ndpStats->vRecvAck)
+                {
+                    roceStats->vExpectedPsn.emplace_back(time, seq);
+                }
+                for (const auto& [time, seq] : ndpStats->vRecvNack)
+                {
+                    roceStats->vAckedPsn.emplace_back(time, seq);
+                }
+
+                mFlowStats[flow->flowIdentifier] = roceStats;
+                vFlowStats.push_back(roceStats);
+            }
         }
     }
     // Calculate the overall rate

@@ -224,6 +224,12 @@ ConstructAppStatsObj(ApplicationContainer& apps)
                totalSentBytes += appStats->nTotalSentBytes;
                retxCount += appStats->nRetxCount;
            }
+           else if (app->GetProtoGroup() == DcbTrafficGenApplication::ProtocolGroup::NDP)
+           {
+               totalSentPkts += appStats->nTotalSentPkts;
+               totalSentBytes += appStats->nTotalSentBytes;
+               retxCount += appStats->nRetxCount;
+           }
            else if (app->GetProtoGroup() == DcbTrafficGenApplication::ProtocolGroup::TCP)
            {
                // TCP does not support totalSent and retxCount, o we use the totalSizePkts and
@@ -496,7 +502,8 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
              }
              (*flowStatsObj)["totalSizePkts"] = flowStats->nTotalSizePkts;
              (*flowStatsObj)["totalSizeBytes"] = flowStats->nTotalSizeBytes;
-             if (app->GetProtoGroup() == DcbTrafficGenApplication::ProtocolGroup::RoCEv2)
+             if (app->GetProtoGroup() == DcbTrafficGenApplication::ProtocolGroup::RoCEv2 ||
+                 app->GetProtoGroup() == DcbTrafficGenApplication::ProtocolGroup::NDP)
              {
                  (*flowStatsObj)["retxCount"] = flowStats->nRetxCount;
              }

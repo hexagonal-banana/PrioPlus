@@ -10,6 +10,7 @@
 #include "ns3/application-container.h"
 #include "ns3/node-container.h"
 #include "ns3/object-factory.h"
+#include "ns3/ipv4.h"
 
 #include <boost/json.hpp>
 #include <vector>
@@ -72,6 +73,13 @@ class NdpApplicationHelper
      */
     void SetTopology(Ptr<DcTopology> topology);
 
+    /**
+     * \brief Ensure NDP L4 is aggregated on a host node and registered with IPv4.
+     * \param node Host node
+     * \return Pointer to the NDP L4 protocol
+     */
+    Ptr<NdpL4Protocol> EnsureNdpL4Protocol(Ptr<Node> node);
+
   private:
     /**
      * \brief Parse NDP-specific application configuration
@@ -94,16 +102,16 @@ class NdpApplicationHelper
      * \param node Node to install protocol on
      * \return Pointer to the NDP L4 protocol
      */
-    Ptr<NdpL4Protocol> EnsureNdpL4Protocol(Ptr<Node> node);
-
     /**
-     * \brief Parse node specification from JSON (e.g., "[0:3]", "all", "random")
+     * \brief Parse node specification from JSON (e.g., "[0:3]", "all", "random 8")
      * \param nodeSpec Node specification string
      * \param topology Datacenter topology
+     * \param hostsOnly Whether to limit the selection to hosts
      * \return Vector of node indices
      */
     std::vector<uint32_t> ParseNodeSpec(const std::string& nodeSpec,
-                                          Ptr<DcTopology> topology);
+                                        Ptr<DcTopology> topology,
+                                        bool hostsOnly);
 
     /**
      * \brief Get traffic pattern from string

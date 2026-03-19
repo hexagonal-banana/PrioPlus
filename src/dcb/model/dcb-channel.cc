@@ -129,6 +129,12 @@ DcbChannel::GetDelay(void) const
     return m_delay;
 }
 
+void
+DcbChannel::SetDelay(Time delay)
+{
+    m_delay = delay;
+}
+
 Ptr<DcbNetDevice>
 DcbChannel::GetSource(uint32_t i) const
 {

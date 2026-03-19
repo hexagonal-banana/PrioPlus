@@ -31,13 +31,9 @@ When debuging your code, you can configure with `-d debug`. The `-d optimized` c
 
 ### Run experiments
 
-The configs are put in `config/prioplus-eurosys25/experiments` which can be run by running `config/prioplus-eurosys25/experiments/run_all.sh` in one click. 
+NDP-related experiment configs are now placed in `config/ndp`.
 
 Note that finishing all the experiments need 4 hours on our server with Intel 48-core CPU @ 2.2GHz and 256 GB memory. It may take much more time on a desktop PC.
-
-### Plot figures
-
-All the figure codes used in our experiments are placed in `config/prioplus-eurosys25/figure-code`. You can reproduce the figure with them. We have attached the reproduced figures in the ipython notebook for your convenience.
 
 ## Future Evolution of this Repository
 

@@ -42,21 +42,38 @@
  {
  
  /***** Utilities about application *****/
- typedef std::function<ApplicationContainer(const boost::json::object&, Ptr<DcTopology>)>
-     AppInstallFunc;
- static ApplicationContainer InstallDcbTrafficGenApplication(const boost::json::object& appConfig,
-                                                             Ptr<DcTopology> topology);
+typedef std::function<ApplicationContainer(const boost::json::object&, Ptr<DcTopology>)>
+    AppInstallFunc;
+static ApplicationContainer InstallDcbTrafficGenApplication(const boost::json::object& appConfig,
+                                                            Ptr<DcTopology> topology);
+static ApplicationContainer InstallNdpTrafficGenApplication(const boost::json::object& appConfig,
+                                                            Ptr<DcTopology> topology);
+
+static std::string
+GetApplicationTypeKey(const boost::json::object& appConfig)
+{
+    if (!appConfig.contains("appType"))
+    {
+        return "DcbTrafficGenApplication";
+    }
+
+    std::string appType = std::string(appConfig.at("appType").as_string().c_str());
+    auto pos = appType.rfind("::");
+    return pos == std::string::npos ? appType : appType.substr(pos + 2);
+}
+
+static std::map<std::string, AppInstallFunc> appInstallMapper = {
+    {"DcbTrafficGenApplication", InstallDcbTrafficGenApplication},
+    {"NdpTrafficGenApplication", InstallNdpTrafficGenApplication},
+    // {"PacketSink", ProtobufTopologyLoader::InstallPacketSink},
+    // {"PreGeneratedApplication", ProtobufTopologyLoader::InstallPreGeneratedApplication}
+};
  
- static std::map<std::string, AppInstallFunc> appInstallMapper = {
-     {"DcbTrafficGenApplication", InstallDcbTrafficGenApplication},
-     // {"PacketSink", ProtobufTopologyLoader::InstallPacketSink},
-     // {"PreGeneratedApplication", ProtobufTopologyLoader::InstallPreGeneratedApplication}
- };
- 
- static std::map<std::string, DcbTrafficGenApplication::ProtocolGroup> protocolGroupMapper = {
+static std::map<std::string, DcbTrafficGenApplication::ProtocolGroup> protocolGroupMapper = {
      {"RAW_UDP", DcbTrafficGenApplication::ProtocolGroup::RAW_UDP},
      {"TCP", DcbTrafficGenApplication::ProtocolGroup::TCP},
      {"RoCEv2", DcbTrafficGenApplication::ProtocolGroup::RoCEv2},
+     {"NDP", DcbTrafficGenApplication::ProtocolGroup::NDP},
  };
  
  ApplicationContainer
@@ -66,37 +83,20 @@
          JsonGetArrayOrRaise(conf, "applicationConfig", "Cannot find applicationConfig field");
      ApplicationContainer apps;
      // This function can be extended to install more sets of applications using this for loop
-     for (const auto& appConfig : appConfigs)
-     {
-         const boost::json::object& appObj = appConfig.as_object();
-         
-         // Check if this is an NDP application
-         std::string protocol = "RoCEv2"; // default
-         auto protocolIt = appObj.find("protocol");
-         if (protocolIt != appObj.end())
-         {
-             protocol = std::string(protocolIt->value().as_string().c_str());
-         }
-         // std::cout << "DEBUG: Processing application with protocol=" << protocol << std::endl;
-         
-         if (protocol == "NDP")
-         {
-             // Install NDP application
-             // std::cout << "DEBUG: Installing NDP applications, protocol=" << protocol << std::endl;
-             NdpApplicationHelper ndpHelper;
-             ApplicationContainer ndpApps = ndpHelper.InstallNdpApplications(appObj, topology);
-             apps.Add(ndpApps);
-             // std::cout << "DEBUG: Installed " << ndpApps.GetN() << " NDP applications" << std::endl;
-             NS_LOG_INFO("Installed NDP applications");
-         }
-         else
-         {
-             // Install RoCEv2/TCP application (existing behavior)
-             apps.Add(InstallDcbTrafficGenApplication(appObj, topology));
-         }
-     }
-     return apps;
- }
+    for (const auto& appConfig : appConfigs)
+    {
+        const boost::json::object& appObj = appConfig.as_object();
+
+        std::string appTypeKey = GetApplicationTypeKey(appObj);
+        auto installer = appInstallMapper.find(appTypeKey);
+        if (installer == appInstallMapper.end())
+        {
+            NS_FATAL_ERROR("Cannot recognize appType \"" << appTypeKey << "\"");
+        }
+        apps.Add(installer->second(appObj, topology));
+    }
+    return apps;
+}
  
  /***** Utilities about DcbTrafficGenApplication *****/
  
@@ -182,58 +182,58 @@
      return appHelper;
  }
  
- static ApplicationContainer
- InstallDcbTrafficGenApplication(const boost::json::object& appConfig, Ptr<DcTopology> topology)
- {
-     std::shared_ptr<DcbTrafficGenApplicationHelper> appHelper =
-         ConstructTraceAppHelper(appConfig, topology);
-     ApplicationContainer apps;
- 
-     // Install the application on nodes specified in the config
-     // TODO We just assume that the application is installed on all the hosts
-     if (appConfig.find("nodes") == appConfig.end())
-     {
-         NS_FATAL_ERROR("Using DcbTrafficGenApplication needs to specify \"load\"");
-     }
-     boost::json::string nodes = appConfig.find("nodes")->value().get_string().c_str();
-     if (nodes == "all")
-     {
-         // TODO so ugly, need to be refactored
-         // if has groupCongestionConfig, set the attributes accordingly
-         // if nodes is "all", each node will be installed with multiple applications
-         if (appConfig.find("groupCongestionConfig") != appConfig.end())
-         {
-             uint32_t nApp = 1;
-             boost::json::object gConf =
-                 appConfig.find("groupCongestionConfig")->value().as_object();
-             JsonCallIfExistsInt<uint32_t>(gConf, "applicationNumber", [&nApp](int n) { nApp = n; });
-             for (uint32_t i = 0; i < nApp; ++i)
-             {
-                 SetGroupAttributes(gConf, appHelper, nApp, i);
-                 for (auto hostIter = topology->hosts_begin(); hostIter != topology->hosts_end();
-                      hostIter++)
-                 {
-                     Ptr<Node> node = hostIter->nodePtr;
-                     apps.Add(appHelper->Install(node));
-                 }
-             }
-         }
-         else
-         {
-             for (auto hostIter = topology->hosts_begin(); hostIter != topology->hosts_end();
-                  hostIter++)
-             {
-                 if (hostIter->type != DcTopology::TopoNode::NodeType::HOST)
-                 {
-                     NS_FATAL_ERROR("Node "
-                                    << topology->GetNodeIndex(hostIter->nodePtr)
-                                    << " is not a host and thus could not install an application.");
-                 }
-                 Ptr<Node> node = hostIter->nodePtr;
-                 apps.Add(appHelper->Install(node));
-             }
-         }
-     }
+static ApplicationContainer
+InstallDcbTrafficGenApplication(const boost::json::object& appConfig, Ptr<DcTopology> topology)
+{
+    std::shared_ptr<DcbTrafficGenApplicationHelper> appHelper =
+        ConstructTraceAppHelper(appConfig, topology);
+    ApplicationContainer apps;
+
+    // Install the application on nodes specified in the config
+    // TODO We just assume that the application is installed on all the hosts
+    if (appConfig.find("nodes") == appConfig.end())
+    {
+        NS_FATAL_ERROR("Using DcbTrafficGenApplication needs to specify \"load\"");
+    }
+    boost::json::string nodes = appConfig.find("nodes")->value().get_string().c_str();
+    if (nodes == "all")
+    {
+        // TODO so ugly, need to be refactored
+        // if has groupCongestionConfig, set the attributes accordingly
+        // if nodes is "all", each node will be installed with multiple applications
+        if (appConfig.find("groupCongestionConfig") != appConfig.end())
+        {
+            uint32_t nApp = 1;
+            boost::json::object gConf =
+                appConfig.find("groupCongestionConfig")->value().as_object();
+            JsonCallIfExistsInt<uint32_t>(gConf, "applicationNumber", [&nApp](int n) { nApp = n; });
+            for (uint32_t i = 0; i < nApp; ++i)
+            {
+                SetGroupAttributes(gConf, appHelper, nApp, i);
+                for (auto hostIter = topology->hosts_begin(); hostIter != topology->hosts_end();
+                     hostIter++)
+                {
+                    Ptr<Node> node = hostIter->nodePtr;
+                    apps.Add(appHelper->Install(node));
+                }
+            }
+        }
+        else
+        {
+            for (auto hostIter = topology->hosts_begin(); hostIter != topology->hosts_end();
+                 hostIter++)
+            {
+                if (hostIter->type != DcTopology::TopoNode::NodeType::HOST)
+                {
+                    NS_FATAL_ERROR("Node "
+                                   << topology->GetNodeIndex(hostIter->nodePtr)
+                                   << " is not a host and thus could not install an application.");
+                }
+                Ptr<Node> node = hostIter->nodePtr;
+                apps.Add(appHelper->Install(node));
+            }
+        }
+    }
      // if nodes start with "random [num]"
      else if (boost::algorithm::starts_with(nodes.c_str(), "random"))
      {
@@ -322,8 +322,15 @@
          }
      }
  
-     return apps;
- }
+    return apps;
+}
+
+static ApplicationContainer
+InstallNdpTrafficGenApplication(const boost::json::object& appConfig, Ptr<DcTopology> topology)
+{
+    NdpApplicationHelper ndpHelper;
+    return ndpHelper.InstallNdpApplications(appConfig, topology);
+}
  
  void
  SetGroupAttributes(const boost::json::object& gConf,

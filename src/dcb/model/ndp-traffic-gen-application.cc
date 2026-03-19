@@ -483,6 +483,11 @@ NdpTrafficGenApplication::SendPacket()
         return;
     }
 
+    if (m_socket)
+    {
+        m_socket->SetMoreDataPending(true);
+    }
+
     // For SEND_ONCE and INCAST patterns, submit the entire flow at once
     // (similar to RoCEv2's approach)
     if ((m_pattern == SEND_ONCE || m_pattern == INCAST) && m_bytesSent == 0)
@@ -528,6 +533,7 @@ NdpTrafficGenApplication::SendPacket()
         // All packets submitted to socket buffer.
         // NOTE: Do NOT set m_finished/m_finishTime here.
         // True flow completion (all-ACKed) is signalled via HandleFlowComplete().
+        m_socket->SetMoreDataPending(false);
         NS_LOG_INFO("All " << m_bytesSent << " bytes submitted to socket at "
                    << Simulator::Now().GetMicroSeconds() << " us, awaiting ACKs...");
         return;
@@ -582,6 +588,7 @@ NdpTrafficGenApplication::SendPacket()
         if (m_bytesSent >= m_flowSize)
         {
             // All bytes submitted; true completion is via HandleFlowComplete()
+            m_socket->SetMoreDataPending(false);
             NS_LOG_INFO("All " << m_bytesSent << " bytes (burst) submitted, awaiting ACKs...");
             return;
         }
@@ -630,6 +637,7 @@ NdpTrafficGenApplication::SendPacket()
     else
     {
         // All bytes submitted; true completion is via HandleFlowComplete()
+        m_socket->SetMoreDataPending(false);
         NS_LOG_INFO("All " << m_bytesSent << " bytes submitted, awaiting ACKs...");
     }
 }

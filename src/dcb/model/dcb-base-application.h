@@ -19,6 +19,7 @@
 #define DCB_BASE_APPLICATION_H
 
 #include "dcb-net-device.h"
+#include "ndp-socket.h"
 #include "rocev2-socket.h"
 #include "udp-based-socket.h"
 
@@ -77,7 +78,8 @@ class DcbBaseApplication : public Application
     {
         RAW_UDP,
         TCP,
-        RoCEv2
+        RoCEv2,
+        NDP
     };
 
     /**
@@ -128,6 +130,7 @@ class DcbBaseApplication : public Application
     void SetReceiveEnabled(bool enabled);
 
     virtual void FlowCompletes(Ptr<UdpBasedSocket> socket);
+    virtual void FlowCompletes(Ptr<NdpSocket> socket);
 
     /**
      * \brief Callback for UnackSequence in TcpTxBuffer, in order to record the flow end time.
@@ -295,6 +298,7 @@ class DcbBaseApplication : public Application
      * \param from the address of the peer
      */
     virtual void HandleTcpAccept(Ptr<Socket> socket, const Address& from);
+    virtual void HandleNdpAccept(Ptr<Socket> socket, const Address& from);
 
     virtual void HandleTcpPeerClose(Ptr<Socket> socket);
 

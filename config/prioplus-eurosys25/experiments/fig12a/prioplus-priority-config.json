@@ -1,9 +1,0 @@
-{
-    "HighPriorityRatio": 0.25,
-    "DirectStartRatio": 0.25,
-    "LinearStartRateRatio": {
-        "1.0": 0.25,
-        "0.25": 0.625,
-        "0.125": 1.0
-    }
-}

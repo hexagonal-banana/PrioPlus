@@ -96,6 +96,14 @@ SwitchNode::DoInitialize()
             {
                 Ptr<NetDevice> dev = GetDevice(i);
 
+                // Ensure the Node layer always has an IPv4 handler on switch ports.
+                // Some NDP runs never reached TrafficControlLayer::Receive on switches,
+                // leaving transit packets stranded after DcbNetDevice::Receive().
+                RegisterProtocolHandler(
+                    MakeCallback(&SwitchNode::ReceivePacketAfterTc, this),
+                    Ipv4L3Protocol::PROT_NUMBER,
+                    dev);
+
                 // Remove all IPv4 handlers on TC for this device
                 // (this removes Ipv4L3Protocol::Receive AND any previously
                 //  registered ReceivePacketAfterTc from json-topology-helper)
